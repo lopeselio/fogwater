@@ -34,6 +34,8 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
   aimRef.current = aim;
   const [mouse, setMouse] = useState<{ x: number; y: number } | null>(null);
   const [banner, setBanner] = useState(false);
+  // phones: the chart and the info panel open as bottom sheets
+  const [sheet, setSheet] = useState<null | 'chart' | 'info'>(null);
   // a ship being dragged: which one, which of its cells you grabbed, and where the press started
   const grab = useRef<{ k: number; offset: number; from: number } | null>(null);
   const wheelAt = useRef(0);
@@ -368,14 +370,16 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
   const link = `${location.origin}/g/${id}`;
   const canJoin = !seated && view.mode === 'friend' && !view.seats[1];
 
+  // phones and tablets: talk about taps, not clicks and arrow keys
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
   let status: string;
   if (canJoin) status = `${view.seats[0].name} challenges you to a sea battle.`;
   else if (!seated) status = 'You’re watching this battle.';
-  else if (d.phase === 'placing') status = placing ? (holding === null ? 'Place your fleet: click a ship to move it, or Shuffle.' : `Moving the ${FLEET[holding].name}: drop it on a green spot. R, right-click or the wheel turns it.`) : !view.seats[1] ? 'Fleet sealed. Send the link to a friend.' : `Fleet sealed. Waiting for ${foe?.name} to place theirs…`;
+  else if (d.phase === 'placing') status = placing ? (holding === null ? (coarse ? 'Place your fleet: tap a ship, then tap where it goes. Turn rotates it.' : 'Place your fleet: click a ship to move it, or Shuffle.') : `Moving the ${FLEET[holding].name}: drop it on a green spot. R, right-click or the wheel turns it.`) : !view.seats[1] ? 'Fleet sealed. Send the link to a friend.' : `Fleet sealed. Waiting for ${foe?.name} to place theirs…`;
   else if (d.phase === 'playing') {
     if (d.pending?.by === me) status = `Your shot at ${cellName(d.pending.cell)} is in the air… waiting for ${foe?.name} to answer.`;
     else if (d.pending) status = `${foe?.name} fired at ${cellName(d.pending.cell)}…`;
-    else status = d.turn === me ? 'Your shot: click the fog, or aim with the arrows and press Enter.' : `${foe?.name} is taking aim…`;
+    else status = d.turn === me ? (coarse ? 'Your shot: tap a cell in the fog (or on the Chart).' : 'Your shot: click the fog, or aim with the arrows and press Enter.') : `${foe?.name} is taking aim…`;
   } else if (d.phase === 'reveal') status = 'The battle is decided. Fleets are being revealed and checked onchain…';
   else status = d.winner === me ? 'Victory!' : seated ? 'Defeat.' : `${view.seats[d.winner ?? 0]?.name} won.`;
 
@@ -400,13 +404,17 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
         {seated && d.shots[me].length > 0 && <small className="stats">Accuracy {stats.accuracy}%{stats.streak > 1 ? ` · ${stats.streak} hits in a row` : ''} · {d.shots[me].length} shots</small>}
         {left && seated && view.waitingOn === me && <small className="dim">Move within {left} or the battle is forfeit.</small>}
         {err && <p className="err">{err}</p>}
+        <div className="narrow-tabs">
+        <button className={focus === 0 ? 'on' : ''} onClick={() => setFocus(0)}>Your waters</button>
+        <button className={focus === 1 ? 'on' : ''} onClick={() => setFocus(1)}>Enemy waters</button>
+      </div>
       </div>
 
       {banner && <div className="turn-banner" aria-hidden="true">YOUR SHOT</div>}
       {tag && <div className="cursor-tag" style={{ left: mouse!.x + 16, top: mouse!.y + 14 }}><b>{tag.text}</b>{tag.note && <span>{tag.note}</span>}</div>}
 
       {seated && d.phase !== 'placing' && (
-        <div className="card chartbox">
+        <div className={`card chartbox${sheet === 'chart' ? ' open' : ''}`}>
           <Charts
             myShots={d.shots[me]} theirShots={d.shots[them]} myBoard={fleet?.board ?? null}
             aim={aim} canFire={myTurn && !busy}
@@ -416,10 +424,7 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
         </div>
       )}
 
-      <div className="narrow-tabs">
-        <button className={focus === 0 ? 'on' : ''} onClick={() => setFocus(0)}>Your waters</button>
-        <button className={focus === 1 ? 'on' : ''} onClick={() => setFocus(1)}>Enemy waters</button>
-      </div>
+
 
       {canJoin && (
         <div className="card center">
@@ -455,7 +460,7 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
         <div className="card dock"><p className="err">This browser doesn’t hold your fleet’s secret, so it can’t answer shots. Open the game where you placed your fleet.</p></div>
       )}
 
-      <aside className="card side">
+      <aside className={`card side${sheet === 'info' ? ' open' : ''}`}>
         <h3>Fleets</h3>
         <div className="fleets">
           <ul>{FLEET.map((s, k) => <li key={k} className={mySunk[k] ? 'sunk' : ''}>{s.name} <i>{'■'.repeat(s.len)}</i></li>)}</ul>
@@ -493,6 +498,12 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
           state={{ placing, holding: holding !== null, sealed: !!d.roots[me], phase: d.phase, myShots: d.shots[me].length, theirShots: d.shots[them].length }}
           onDone={endTour}
         />
+      )}
+      {seated && d.phase !== 'placing' && d.phase !== 'done' && (
+        <div className="phonebar">
+          <button className={sheet === 'chart' ? 'on' : ''} onClick={() => setSheet(sheet === 'chart' ? null : 'chart')}>Chart</button>
+          <button className={sheet === 'info' ? 'on' : ''} onClick={() => setSheet(sheet === 'info' ? null : 'info')}>Info</button>
+        </div>
       )}
       {toast && <div className="toast">{toast}</div>}
       {cfg && !cfg.chain && <div className="badge">offline mode</div>}
