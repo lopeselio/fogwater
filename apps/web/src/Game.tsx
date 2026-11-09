@@ -5,6 +5,7 @@ import {
 } from '@fogwater/rules';
 import { api, type GameView, type ServerConfig } from './api.ts';
 import { getName, getSeat, putSeat, setName, type LocalSeat } from './local.ts';
+import { Charts, ShotLog, aimStats } from './Charts.tsx';
 import { Coach } from './Onboarding.tsx';
 import { sound, type Board, type Sea } from './scene.ts';
 import { call as walletCall } from './wallet.ts';
@@ -28,6 +29,16 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
   const [vertical, setVertical] = useState(false);
   const [hover, setHover] = useState<{ board: Board; cell: number } | null>(null);
   const [focus, setFocus] = useState<Board>(0);
+  const [aim, setAim] = useState(44);
+  const aimRef = useRef(44);
+  aimRef.current = aim;
+  const [mouse, setMouse] = useState<{ x: number; y: number } | null>(null);
+  const [banner, setBanner] = useState(false);
+  // a ship being dragged: which one, which of its cells you grabbed, and where the press started
+  const grab = useRef<{ k: number; offset: number; from: number } | null>(null);
+  const wheelAt = useRef(0);
+  // the latest placement state, for pointer handlers that fire before React re-renders
+  const live = useRef({ ships: [] as Placement[], holding: null as number | null, vertical: false });
   const [joinName, setJoinName] = useState(getName());
   const viewRef = useRef<GameView | null>(null);
   viewRef.current = view;
@@ -111,6 +122,7 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
             const k = shot.sunk;
             enqueue(() => {
               if (s === me) { flash(`You sank their ${FLEET[k].name}!`); wrecks(viewRef.current ?? view); } else flash(`Your ${FLEET[k].name} went down.`);
+              sea.callout(s === me ? 1 : 0, shot.cell, 'SUNK!', '#ffcf5a');
               sound('bell');
             });
           }
@@ -170,8 +182,39 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
   }, [myTurn, busy, shotCells, me, enqueue, sea, id, token]);
 
   const shipAt = (cell: number): number => { try { return layout(ships)[cell]; } catch { return -1; } };
-  const candidate = (k: number, cell: number, v: boolean): Placement[] => ships.map((p, i) => (i === k ? { start: cell, vertical: v } : p));
+  const candidate = (k: number, cell: number, v: boolean): Placement[] => ships.map((p, i) => (i === k ? { start: bowFor(cell, v), vertical: v } : p));
+  /** where the bow goes so the cell you grabbed stays under the pointer */
+  const bowFor = (cell: number, v: boolean): number => {
+    const k = live.current.holding ?? grab.current?.k ?? 0;
+    const len = FLEET[k].len;
+    let r = Math.floor(cell / 10), c = cell % 10;
+    if (v) r -= grab.current?.offset ?? 0; else c -= grab.current?.offset ?? 0;
+    // snap inside the sea, so a ship dropped by an edge lands next to it
+    r = Math.max(0, Math.min(r, v ? 10 - len : 9));
+    c = Math.max(0, Math.min(c, v ? 9 : 10 - len));
+    return r * 10 + c;
+  };
+  const pickUp = (k: number, cell: number): void => {
+    const cells = shipCells(ships[k], FLEET[k].len) ?? [];
+    grab.current = { k, offset: Math.max(0, cells.indexOf(cell)), from: cell };
+    live.current = { ...live.current, holding: k, vertical: ships[k].vertical };
+    setHolding(k);
+    setVertical(ships[k].vertical);
+  };
+  const drop = (cell: number): boolean => {
+    const { ships: cur, holding: k, vertical: v } = live.current;
+    if (k === null) return false;
+    const next = cur.map((p, i) => (i === k ? { start: bowFor(cell, v), vertical: v } : p));
+    if (!isLegal(next)) return false;
+    live.current = { ships: next, holding: null, vertical: v };
+    setShips(next);
+    setHolding(null);
+    grab.current = null;
+    sound('tick');
+    return true;
+  };
 
+  live.current = { ships, holding, vertical };
   useEffect(() => {
     sea.events = {
       onHover: (board, cell) => setHover(cell === null ? null : { board, cell }),
@@ -180,13 +223,22 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
           if (button === 2) { setVertical((x) => !x); return; }
           if (holding === null) {
             const k = shipAt(cell);
-            if (k >= 0) { setHolding(k); setVertical(ships[k].vertical); }
-          } else if (isLegal(candidate(holding, cell, vertical))) {
-            setShips(candidate(holding, cell, vertical));
-            setHolding(null);
-          }
+            if (k >= 0) pickUp(k, cell);
+          } else drop(cell);
         } else if (board === 1) void fire(cell);
       },
+      // drag and drop: let go over another cell and the ship lands there (a plain click keeps holding it)
+      onRelease: (board, cell) => {
+        const g = grab.current;
+        if (!placing || !g || board !== 0 || cell === null || cell === g.from) return;
+        drop(cell);
+      },
+      onWheel: placing ? () => {
+        if (live.current.holding === null) return;
+        if (Date.now() - wheelAt.current < 180) return;
+        wheelAt.current = Date.now();
+        setVertical((x) => !x);
+      } : undefined,
     };
   });
 
@@ -194,17 +246,50 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
     const key = (e: KeyboardEvent): void => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       if ((e.key === 'r' || e.key === 'R') && placing) setVertical((x) => !x);
-      if (e.key === 'Escape') setHolding(null);
+      if (e.key === 'Escape') { setHolding(null); grab.current = null; }
+      if (!myTurn) return;
+      const move: Record<string, number> = { ArrowUp: -10, ArrowDown: 10, ArrowLeft: -1, ArrowRight: 1, w: -10, s: 10, a: -1, d: 1 };
+      if (e.key in move) {
+        e.preventDefault();
+        setAim((c) => {
+          const n = c + move[e.key];
+          if (n < 0 || n > 99 || (Math.abs(move[e.key]) === 1 && Math.floor(n / 10) !== Math.floor(c / 10))) return c;
+          return n;
+        });
+        sound('tick');
+      }
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'f') { e.preventDefault(); void fire(aimRef.current); }
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [placing]);
+  }, [placing, myTurn, fire]);
+
+  // the crosshair follows the mouse over the fog, or the keyboard aim
+  useEffect(() => { if (hover?.board === 1) setAim(hover.cell); }, [hover]);
+  useEffect(() => { sea.setReticle(myTurn && !busy ? aim : null); }, [sea, myTurn, busy, aim]);
+  useEffect(() => () => sea.setReticle(null), [sea]);
+
+  // a coordinate tag under the pointer
+  useEffect(() => {
+    let raf = 0;
+    const mv = (e: PointerEvent): void => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setMouse({ x: e.clientX, y: e.clientY })); };
+    window.addEventListener('pointermove', mv);
+    return () => { window.removeEventListener('pointermove', mv); cancelAnimationFrame(raf); };
+  }, []);
+
+  // "Your shot" banner each time the turn comes back to you
+  useEffect(() => {
+    if (!myTurn) return;
+    setBanner(true);
+    const t = window.setTimeout(() => setBanner(false), 1300);
+    return () => window.clearTimeout(t);
+  }, [myTurn]);
 
   // hover feedback: a ghost while placing, a target frame on the enemy sea on your turn
   useEffect(() => {
     if (placing && holding !== null && hover?.board === 0) {
-      const p = { start: hover.cell, vertical };
-      sea.showGhost(holding, shipCells(p, FLEET[holding].len) ? p : { start: hover.cell, vertical }, isLegal(candidate(holding, hover.cell, vertical)));
+      const p = { start: bowFor(hover.cell, vertical), vertical };
+      sea.showGhost(holding, p, isLegal(candidate(holding, hover.cell, vertical)));
       sea.setHover(0, null);
     } else {
       sea.showGhost(null);
@@ -286,14 +371,18 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
   let status: string;
   if (canJoin) status = `${view.seats[0].name} challenges you to a sea battle.`;
   else if (!seated) status = 'You’re watching this battle.';
-  else if (d.phase === 'placing') status = placing ? (holding === null ? 'Place your fleet: click a ship to move it, or Shuffle.' : `Placing the ${FLEET[holding].name}: click a cell for its bow. R or right-click turns it.`) : !view.seats[1] ? 'Fleet sealed. Send the link to a friend.' : `Fleet sealed. Waiting for ${foe?.name} to place theirs…`;
+  else if (d.phase === 'placing') status = placing ? (holding === null ? 'Place your fleet: click a ship to move it, or Shuffle.' : `Moving the ${FLEET[holding].name}: drop it on a green spot. R, right-click or the wheel turns it.`) : !view.seats[1] ? 'Fleet sealed. Send the link to a friend.' : `Fleet sealed. Waiting for ${foe?.name} to place theirs…`;
   else if (d.phase === 'playing') {
     if (d.pending?.by === me) status = `Your shot at ${cellName(d.pending.cell)} is in the air… waiting for ${foe?.name} to answer.`;
     else if (d.pending) status = `${foe?.name} fired at ${cellName(d.pending.cell)}…`;
-    else status = d.turn === me ? 'Your shot: pick a cell in the fog.' : `${foe?.name} is taking aim…`;
+    else status = d.turn === me ? 'Your shot: click the fog, or aim with the arrows and press Enter.' : `${foe?.name} is taking aim…`;
   } else if (d.phase === 'reveal') status = 'The battle is decided. Fleets are being revealed and checked onchain…';
   else status = d.winner === me ? 'Victory!' : seated ? 'Defeat.' : `${view.seats[d.winner ?? 0]?.name} won.`;
 
+  const stats = aimStats(d.shots[me]);
+  const tag = mouse && hover && ((hover.board === 1 && myTurn) || (hover.board === 0 && placing))
+    ? { text: cellName(hover.cell), note: hover.board === 1 ? (shotCells.has(hover.cell) ? 'already fired' : 'fire!') : holding !== null ? (isLegal(candidate(holding, hover.cell, vertical)) ? 'drop here' : 'won’t fit') : shipAt(hover.cell) >= 0 ? 'pick up' : '' }
+    : null;
   const deadline = view.deadline && d.phase !== 'done' ? Math.max(0, view.deadline - Date.now()) : null;
   const left = deadline === null ? '' : deadline > 86400000 ? `${Math.floor(deadline / 86400000)}d ${Math.floor((deadline % 86400000) / 3600000)}h` : `${Math.floor(deadline / 3600000)}h ${Math.floor((deadline % 3600000) / 60000)}m`;
 
@@ -308,9 +397,24 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
           <span className="them">{foe?.name ?? '…'}</span>
         </div>
         <p className={myTurn || placing ? 'go' : ''}>{status}</p>
+        {seated && d.shots[me].length > 0 && <small className="stats">Accuracy {stats.accuracy}%{stats.streak > 1 ? ` · ${stats.streak} hits in a row` : ''} · {d.shots[me].length} shots</small>}
         {left && seated && view.waitingOn === me && <small className="dim">Move within {left} or the battle is forfeit.</small>}
         {err && <p className="err">{err}</p>}
       </div>
+
+      {banner && <div className="turn-banner" aria-hidden="true">YOUR SHOT</div>}
+      {tag && <div className="cursor-tag" style={{ left: mouse!.x + 16, top: mouse!.y + 14 }}><b>{tag.text}</b>{tag.note && <span>{tag.note}</span>}</div>}
+
+      {seated && d.phase !== 'placing' && (
+        <div className="card chartbox">
+          <Charts
+            myShots={d.shots[me]} theirShots={d.shots[them]} myBoard={fleet?.board ?? null}
+            aim={aim} canFire={myTurn && !busy}
+            onAim={setAim} onFire={(c) => void fire(c)}
+          />
+          <ShotLog shots={d.shots} names={[view.seats[0].name, view.seats[1]?.name ?? '…']} me={me} />
+        </div>
+      )}
 
       <div className="narrow-tabs">
         <button className={focus === 0 ? 'on' : ''} onClick={() => setFocus(0)}>Your waters</button>
