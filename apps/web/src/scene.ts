@@ -153,6 +153,10 @@ function textSprite(text: string, size = 0.5, color = '#c9d8f0'): THREE.Sprite {
 export interface SceneEvents {
   onHover?: (board: Board, cell: number | null) => void;
   onClick?: (board: Board, cell: number, button: number) => void;
+  /** pointer released over a cell (for drag-and-drop placement) */
+  onRelease?: (board: Board, cell: number | null) => void;
+  /** mouse wheel over the sea */
+  onWheel?: (dy: number) => void;
 }
 
 export class Sea {
@@ -175,6 +179,9 @@ export class Sea {
   private ghost: THREE.Group | null = null;
   private ghostOk = true;
   private hoverBox: THREE.LineSegments;
+  private reticle: THREE.Group;
+  private lastRings: [THREE.Mesh, THREE.Mesh];
+  private callouts: { s: THREE.Sprite; t: number }[] = [];
   private markers = new Map<string, THREE.Object3D>();
   private fires: { board: Board; cell: number; strong: boolean }[] = [];
   private beam!: THREE.Mesh;
@@ -243,6 +250,31 @@ export class Sea {
     this.hoverBox.visible = false;
     this.scene.add(this.hoverBox);
 
+    // a crosshair over the cell you're aiming at, on your turn
+    this.reticle = new THREE.Group();
+    const rm = new THREE.MeshBasicMaterial({ color: 0xff6a3c, toneMapped: false });
+    for (const [w, d, x, z] of [[0.36, 0.07, -0.32, 0], [0.36, 0.07, 0.32, 0], [0.07, 0.36, 0, -0.32], [0.07, 0.36, 0, 0.32]]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, 0.05, d), rm);
+      b.position.set(x, 0, z);
+      this.reticle.add(b);
+    }
+    const dot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.1), rm);
+    this.reticle.add(dot);
+    this.reticle.visible = false;
+    this.scene.add(this.reticle);
+
+    // the last shot on each water pulses
+    const ringGeo = new THREE.RingGeometry(0.42, 0.5, 4, 1);
+    ringGeo.rotateX(-Math.PI / 2);
+    ringGeo.rotateY(Math.PI / 4);
+    const ring = (): THREE.Mesh => {
+      const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, toneMapped: false, side: THREE.DoubleSide }));
+      m.visible = false;
+      this.scene.add(m);
+      return m;
+    };
+    this.lastRings = [ring(), ring()];
+
     for (const b of [0, 1] as const) {
       const plane = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), new THREE.MeshBasicMaterial({ visible: false }));
       plane.rotation.x = -Math.PI / 2;
@@ -255,6 +287,8 @@ export class Sea {
     const el = this.renderer.domElement;
     el.addEventListener('pointermove', (e) => this.pointer(e, false));
     el.addEventListener('pointerdown', (e) => this.pointer(e, true));
+    el.addEventListener('pointerup', () => this.events.onRelease?.(this.hovered?.board ?? 0, this.hovered?.cell ?? null));
+    el.addEventListener('wheel', (e) => { if (this.events.onWheel) { e.preventDefault(); this.events.onWheel(e.deltaY); } }, { passive: false });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('pointerleave', () => { this.hovered = null; this.hoverBox.visible = false; this.events.onHover?.(0, null); });
     new ResizeObserver(() => this.resize()).observe(host);
@@ -544,6 +578,34 @@ export class Sea {
       }
     }
     this.mark(board, cell, result);
+    this.setLastShot(board, cell);
+    this.callout(board, cell, result === 'hit' ? 'HIT!' : 'MISS', result === 'hit' ? '#ff8a5c' : '#cfe2ff');
+    if (result === 'hit' && board === 0) try { navigator.vibrate?.(120); } catch { /* no haptics */ }
+  }
+
+  // ---------- feedback ----------
+
+  /** Big floating text where a shot landed ("HIT!", "MISS", "SUNK"). */
+  callout(board: Board, cell: number, text: string, color: string): void {
+    const s = textSprite(text, 0.7, color);
+    s.position.copy(cellPos(board, cell)).setY(1.2);
+    s.material.depthTest = false;
+    s.renderOrder = 10;
+    this.scene.add(s);
+    this.callouts.push({ s, t: 0 });
+  }
+
+  /** The pulsing marker on the last shot that landed on a water (null hides it). */
+  setLastShot(board: Board, cell: number | null): void {
+    const r = this.lastRings[board];
+    r.visible = cell !== null;
+    if (cell !== null) r.position.copy(cellPos(board, cell)).setY(0.12);
+  }
+
+  /** The aiming crosshair (null hides it). */
+  setReticle(cell: number | null): void {
+    this.reticle.visible = cell !== null;
+    if (cell !== null) this.reticle.position.copy(cellPos(1, cell)).setY(0.62);
   }
 
   // ---------- camera, input, loop ----------
@@ -590,6 +652,7 @@ export class Sea {
     if (!this.hovered || this.hovered.board !== board || this.hovered.cell !== cell) {
       this.hovered = { board, cell };
       this.events.onHover?.(board, cell);
+      if (board === 1 && this.reticle.visible) sound('tick');
     }
     if (click) this.events.onClick?.(board, cell, e.button);
   }
@@ -680,6 +743,19 @@ export class Sea {
     this.particles.splashGravity(dt);
     this.particles.update(dt);
     this.beam.rotation.y = t * 0.6;
+    this.reticle.rotation.y = t * 1.2;
+    this.reticle.scale.setScalar(1 + Math.sin(t * 6) * 0.06);
+    for (const r of this.lastRings) {
+      const k = (t * 1.3) % 1;
+      r.scale.setScalar(0.8 + k * 0.6);
+      (r.material as THREE.MeshBasicMaterial).opacity = 1 - k;
+    }
+    for (const c of [...this.callouts]) {
+      c.t += dt;
+      c.s.position.y += dt * 0.9;
+      c.s.material.opacity = Math.min(1, 3 * (1.6 - c.t));
+      if (c.t > 1.6) { this.scene.remove(c.s); this.callouts.splice(this.callouts.indexOf(c), 1); }
+    }
 
     // camera eases to its goal; impacts shake it
     this.camera.position.lerp(this.camGoal.pos, 1 - Math.pow(0.02, dt));
@@ -717,7 +793,7 @@ function noise(ctx: AudioContext, dur: number): AudioBufferSourceNode {
   return s;
 }
 
-export function sound(kind: 'boom' | 'splash' | 'blast' | 'bell'): void {
+export function sound(kind: 'boom' | 'splash' | 'blast' | 'bell' | 'tick'): void {
   if (muted) return;
   try {
     actx ??= new AudioContext();
@@ -725,6 +801,15 @@ export function sound(kind: 'boom' | 'splash' | 'blast' | 'bell'): void {
     const now = ctx.currentTime;
     const gain = ctx.createGain();
     gain.connect(ctx.destination);
+    if (kind === 'tick') {
+      const o = ctx.createOscillator();
+      o.frequency.value = 1500;
+      o.type = 'square';
+      gain.gain.setValueAtTime(0.02, now);
+      gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.04);
+      o.connect(gain); o.start(now); o.stop(now + 0.05);
+      return;
+    }
     if (kind === 'bell') {
       const o = ctx.createOscillator();
       o.frequency.value = 880;
