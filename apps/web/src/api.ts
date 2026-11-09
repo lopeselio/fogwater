@@ -28,7 +28,7 @@ export interface GameView {
   waitingOn: Seat | null;
   reveals: ({ seed: string; ships: Placement[] } | null)[];
   lines: { who: string; text: string; signed: boolean }[];
-  chain: { enabled: boolean; contract: string; created: boolean; filled: boolean; queued: number; error: string | null; txs: { what: string; hash: string; url: string }[] };
+  chain: { enabled: boolean; contract: string; created: boolean; filled: boolean; queued: number; error: string | null; retrying?: string | null; txs: { what: string; hash: string; url: string }[] };
 }
 
 export interface Summary {
