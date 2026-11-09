@@ -1,0 +1,24 @@
+{
+  "name": "fogwater",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@11.26.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "build": "pnpm --filter @fogwater/web build",
+    "start": "pnpm --filter @fogwater/server start",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "sim": "pnpm --filter @fogwater/rules sim",
+    "verify": "pnpm --filter @fogwater/server verify",
+    "contract:test": "cd contracts/fleet && cargo test --locked",
+    "contract:build": "cd contracts/fleet && cargo near build non-reproducible-wasm --locked"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.7",
+    "tsx": "4.20.6"
+  }
+}
