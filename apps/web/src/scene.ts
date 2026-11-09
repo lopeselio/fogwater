@@ -628,10 +628,13 @@ export class Sea {
       this.camGoal.pos.set(0, dist * 1.02, dist * 0.92);
       this.camGoal.look.set(0, 0, 0.8);
     } else {
+      // one water at a time: back off until the board and its labels fit the screen's width,
+      // and look more steeply down so a tall phone screen shows the whole water
       const x = BOARD_X[this.focus];
-      const dist = Math.max(12, 13 / Math.min(1, this.camera.aspect + 0.25));
-      this.camGoal.pos.set(x, dist * 1.05, dist * 0.8);
-      this.camGoal.look.set(x, 0, 0.6);
+      const tanH = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect;
+      const dist = Math.max(12, 6.6 / tanH);
+      this.camGoal.pos.set(x, dist * 0.93, dist * 0.4);
+      this.camGoal.look.set(x, 0, 0.9);
     }
     for (const l of this.labels) l.visible = true;
   }
