@@ -468,6 +468,7 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
           {d.roots[me] && <><br />Your seal: <code title={d.roots[me] ?? ''}>{d.roots[me]!.slice(0, 12)}…</code></>}
         </p>
         {view.chain.error && <p className="err small">Chain: {view.chain.error}</p>}
+        {!view.chain.error && view.chain.retrying && <p className="dim small">Chain busy, retrying: {view.chain.retrying}</p>}
         <ul className="txs">{view.chain.txs.slice(-4).reverse().map((t) => <li key={t.hash}><a href={t.url} target="_blank" rel="noreferrer">{t.what}</a></li>)}</ul>
         {seated && d.phase !== 'done' && d.phase !== 'placing' && <button className="ghost small" onClick={() => void resign()}>Strike colours</button>}
       </aside>
