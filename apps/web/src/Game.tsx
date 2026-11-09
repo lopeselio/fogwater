@@ -5,6 +5,7 @@ import {
 } from '@fogwater/rules';
 import { api, type GameView, type ServerConfig } from './api.ts';
 import { getName, getSeat, putSeat, setName, type LocalSeat } from './local.ts';
+import { Coach } from './Onboarding.tsx';
 import { sound, type Board, type Sea } from './scene.ts';
 import { call as walletCall } from './wallet.ts';
 
@@ -12,11 +13,11 @@ import { call as walletCall } from './wallet.ts';
 // and the enemy's on the right; this component keeps the scene in step with the server's view and
 // plays each shot as a cannonball before its mark appears.
 
-interface Props { id: string; sea: Sea; cfg: ServerConfig | null; account: string | null; go: (id: string | null) => void }
+interface Props { id: string; sea: Sea; cfg: ServerConfig | null; account: string | null; go: (id: string | null) => void; tour: boolean; endTour: () => void }
 
 const other = (s: Seat): Seat => (s === 0 ? 1 : 0);
 
-export function Game({ id, sea, cfg, account, go }: Props) {
+export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
   const [view, setView] = useState<GameView | null>(null);
   const [local, setLocal] = useState<LocalSeat | null>(getSeat(id));
   const [err, setErr] = useState('');
@@ -382,6 +383,12 @@ export function Game({ id, sea, cfg, account, go }: Props) {
         </div>
       )}
 
+      {tour && seated && d.phase !== 'done' && (
+        <Coach
+          state={{ placing, holding: holding !== null, sealed: !!d.roots[me], phase: d.phase, myShots: d.shots[me].length, theirShots: d.shots[them].length }}
+          onDone={endTour}
+        />
+      )}
       {toast && <div className="toast">{toast}</div>}
       {cfg && !cfg.chain && <div className="badge">offline mode</div>}
     </div>

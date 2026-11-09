@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type ServerConfig, type Stats, type Summary } from './api.ts';
 import { Game } from './Game.tsx';
 import { allSeats, getName, putSeat, setName } from './local.ts';
+import { HowToPlay, Welcome, readSeen, writeSeen } from './Onboarding.tsx';
 import { Sea, isMuted, setMuted } from './scene.ts';
 import { setContract, signIn, signOut } from './wallet.ts';
 
@@ -16,6 +17,9 @@ export function App() {
   const [account, setAccount] = useState<string | null>(null);
   const [gameId, setGameId] = useState<string | null>(gameIdFromPath());
   const [mute, setMute] = useState(isMuted());
+  const [welcome, setWelcome] = useState(() => !readSeen().welcomed);
+  const [help, setHelp] = useState(false);
+  const [tour, setTour] = useState(() => !readSeen().toured);
 
   useEffect(() => {
     if (!host.current) return;
@@ -32,6 +36,7 @@ export function App() {
     const key = (e: KeyboardEvent): void => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       if (e.key === 'm' || e.key === 'M') { const m = !isMuted(); setMuted(m); setMute(m); }
+      if (e.key === '?') setHelp(true);
     };
     window.addEventListener('keydown', key);
     return () => { window.removeEventListener('popstate', pop); window.removeEventListener('keydown', key); };
@@ -48,12 +53,15 @@ export function App() {
       <header className="top">
         <a className="logo" href="/" onClick={(e) => { e.preventDefault(); go(null); }}>FOGWATER</a>
         <span className="grow" />
+        <button className="ghost small" onClick={() => setHelp(true)} title="How to play (?)">? How to play</button>
         <button className="ghost small" onClick={() => { const m = !mute; setMuted(m); setMute(m); }} title="Sound (M)">{mute ? '♪ off' : '♪ on'}</button>
         <Account account={account} setAccount={setAccount} />
       </header>
       {sea && (gameId
-        ? <Game key={gameId} id={gameId} sea={sea} cfg={cfg} account={account} go={go} />
+        ? <Game key={gameId} id={gameId} sea={sea} cfg={cfg} account={account} go={go} tour={tour && !welcome && !help} endTour={() => setTour(false)} />
         : <Harbour sea={sea} cfg={cfg} account={account} go={go} />)}
+      {welcome && <Welcome onDone={() => setWelcome(false)} />}
+      {help && <HowToPlay onClose={() => setHelp(false)} onReplay={() => { writeSeen({ toured: false }); setTour(true); setHelp(false); setWelcome(true); }} />}
     </>
   );
 }
