@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { CELLS, FLEET, SIZE, colOf, rowOf, shipCells, type Placement } from '@fogwater/rules';
 
 // The night sea, built from voxels: two 10×10 waters side by side on a moonlit ocean. Your fleet sits
@@ -27,6 +31,27 @@ const box = (w: number, h: number, d: number, color: number, emissive = 0): THRE
   return m;
 };
 
+// a soft additive halo for lanterns and fires (bloom makes it glow)
+let glowTex: THREE.Texture | null = null;
+function glow(color: number, size: number): THREE.Sprite {
+  if (!glowTex) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const g = cv.getContext('2d')!;
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.25, 'rgba(255,255,255,.45)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    glowTex = new THREE.CanvasTexture(cv);
+  }
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.6 }));
+  s.scale.set(size, size, 1);
+  s.userData.glow = true;
+  return s;
+}
+
 /** A voxel ship of FLEET[k], lying along +x, centred on the origin. */
 function buildShip(k: number): THREE.Group {
   const len = FLEET[k].len;
@@ -38,6 +63,7 @@ function buildShip(k: number): THREE.Group {
     const tower = box(0.5, 0.35, 0.26, 0x3a4c5e); tower.position.set(-0.2, 0.3, 0); g.add(tower);
     const scope = box(0.06, 0.3, 0.06, 0x1d2833); scope.position.set(-0.1, 0.6, 0); g.add(scope);
     const lamp = box(0.08, 0.08, 0.08, C.lantern, C.lantern); lamp.position.set(-0.35, 0.52, 0); g.add(lamp);
+    const halo = glow(C.lantern, 0.7); halo.position.copy(lamp.position); g.add(halo);
     return g;
   }
   const keel = box(L * 0.86, 0.18, 0.42, C.woodDark); keel.position.y = -0.08; g.add(keel);
@@ -49,6 +75,7 @@ function buildShip(k: number): THREE.Group {
   const rail2 = rail1.clone(); rail2.position.z = -0.29; g.add(rail2);
   const stern = box(0.5, 0.32, 0.56, C.woodDark); stern.position.set(-L / 2 + 0.25, 0.46, 0); g.add(stern);
   const lamp = box(0.1, 0.12, 0.1, C.lantern, C.lantern); lamp.position.set(-L / 2 + 0.05, 0.7, 0); g.add(lamp);
+  const halo = glow(C.lantern, 0.9); halo.position.copy(lamp.position); g.add(halo);
   const masts = Math.max(1, Math.ceil(len / 2));
   for (let i = 0; i < masts; i++) {
     const x = -L / 2 + 0.7 + (i + 0.5) * ((L - 0.9) / masts);
@@ -161,6 +188,11 @@ export class Sea {
   private hovered: { board: Board; cell: number } | null = null;
   private labels: THREE.Sprite[] = [];
   private m4 = new THREE.Matrix4();
+  private composer: EffectComposer;
+  private bloom: UnrealBloomPass;
+  private fireLights: THREE.PointLight[] = [];
+  private flash: THREE.PointLight;
+  private moonPath: number[] = []; // per ocean voxel: how much moonlight it catches
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -169,6 +201,11 @@ export class Sea {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     host.appendChild(this.renderer.domElement);
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.6, 0.5, 0.82);
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(new OutputPass());
     this.scene.background = new THREE.Color(C.sky);
     this.scene.fog = new THREE.FogExp2(C.fog, 0.03);
 
@@ -176,9 +213,23 @@ export class Sea {
     const moonLight = new THREE.DirectionalLight(0xbcd0ff, 1.6);
     moonLight.position.set(-8, 14, -10);
     this.scene.add(moonLight);
-    const warm = new THREE.PointLight(0xffb45a, 14, 16, 1.6);
-    warm.position.set(BOARD_X[0], 2.2, 5.5);
-    this.scene.add(warm);
+    const rim = new THREE.DirectionalLight(0x6f8fd8, 0.5);
+    rim.position.set(10, 6, 12);
+    this.scene.add(rim);
+    // lantern light pooled on each water, from the near posts
+    for (const x of BOARD_X) {
+      const l = new THREE.PointLight(0xffb45a, 10, 13, 1.6);
+      l.position.set(x, 2.4, 6.2);
+      this.scene.add(l);
+    }
+    // firelight follows the newest burning hits; a flash lights each cannon shot
+    for (let i = 0; i < 3; i++) {
+      const l = new THREE.PointLight(0xff7a30, 0, 5, 1.6);
+      this.fireLights.push(l);
+      this.scene.add(l);
+    }
+    this.flash = new THREE.PointLight(0xffd8a0, 0, 10, 1.5);
+    this.scene.add(this.flash);
 
     this.particles = new Particles(this.scene);
     this.buildOcean();
@@ -227,6 +278,10 @@ export class Sea {
           if (cx >= 0 && cx < SIZE && cz >= 0 && cz < SIZE) { board = b; cell = cz * SIZE + cx; }
         }
         this.oceanBase.push({ x, z, board, cell });
+        // the moon hangs back-left: its reflection runs from the far left toward the viewer
+        // only on the far sea, behind the boards
+        const along = x - (-24 + ((z + 26) / 44) * 22);
+        this.moonPath.push(board < 0 && z < -6.5 ? Math.max(0, 1 - Math.abs(along) / (1 + (z + 26) * 0.06)) : 0);
         this.ocean.setColorAt(i, new THREE.Color(board >= 0 ? C.board : C.sea));
         i++;
       }
@@ -274,6 +329,7 @@ export class Sea {
       for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
         const post = box(0.32, 1.1, 0.32, C.wood); post.position.set(x0 + sx * h, 0.4, sz * h); g.add(post);
         const lamp = box(0.2, 0.2, 0.2, C.lantern, C.lantern); lamp.position.set(x0 + sx * h, 1.05, sz * h); g.add(lamp);
+        const halo = glow(C.lantern, 0.9); halo.position.copy(lamp.position); g.add(halo);
       }
       this.scene.add(g);
       // coordinates: A–J down the side, 1–10 along the near edge
@@ -308,6 +364,8 @@ export class Sea {
     const tower = [0xe9e4d6, 0xc0392b, 0xe9e4d6, 0xc0392b, 0xe9e4d6];
     tower.forEach((col, i) => { const t = box(1 - i * 0.08, 1, 1 - i * 0.08, col); t.position.set(0, 3.1 + i, 0); g.add(t); });
     const lamp = box(0.7, 0.6, 0.7, 0xfff1b0, 0xffe27a); lamp.position.set(0, 8.4, 0); g.add(lamp);
+    const halo = glow(0xffe9a0, 4); halo.position.copy(lamp.position); g.add(halo);
+    const keeper = new THREE.PointLight(0xffd98a, 18, 14, 1.5); keeper.position.set(0, 8.4, 0); g.add(keeper);
     const roof = box(0.9, 0.3, 0.9, 0x2a2f3a); roof.position.set(0, 8.85, 0); g.add(roof);
     const cone = new THREE.ConeGeometry(1.1, 9, 16, 1, true);
     cone.translate(0, -4.5, 0);
@@ -325,7 +383,7 @@ export class Sea {
 
   private buildFog(): void {
     const per = 3;
-    this.fog = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xb8c6dc, transparent: true, opacity: 0.32, depthWrite: false }), CELLS * per);
+    this.fog = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0x8fa3c4, transparent: true, opacity: 0.3, depthWrite: false }), CELLS * per);
     this.fog.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let cell = 0; cell < CELLS; cell++) {
       for (let k = 0; k < per; k++) {
@@ -366,6 +424,7 @@ export class Sea {
   private wreck(g: THREE.Group): void {
     g.userData.wreck = true;
     g.traverse((o) => {
+      if (o.userData.glow) { o.visible = false; return; }
       const m = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined;
       if (m?.color) { m.color.multiplyScalar(0.35); m.emissiveIntensity = 0; }
     });
@@ -424,7 +483,8 @@ export class Sea {
     this.ghost = buildShip(k);
     this.ghost.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (mesh.isMesh) mesh.material = new THREE.MeshBasicMaterial({ color: ok ? C.good : C.bad, transparent: true, opacity: 0.55, toneMapped: false });
+      if (o.userData.glow) o.visible = false;
+      else if (mesh.isMesh) mesh.material = new THREE.MeshBasicMaterial({ color: ok ? C.good : C.bad, transparent: true, opacity: 0.55, toneMapped: false });
     });
     this.placeShip(this.ghost, 0, p, k);
     this.ghost.position.y += 0.25;
@@ -450,6 +510,8 @@ export class Sea {
       this.particles.spawn(src, new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 1.5, (Math.random() - 0.5) * 2), i < 6 ? 0xffe0a0 : C.smoke, 0.25 + Math.random() * 0.2, 0.5 + Math.random() * 0.5);
     }
     sound('boom');
+    this.flash.position.copy(src).setY(1.4);
+    this.flash.intensity = 40;
     const ball = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), new THREE.MeshBasicMaterial({ color: 0x111111 }));
     ball.position.copy(src);
     this.scene.add(ball);
@@ -474,6 +536,8 @@ export class Sea {
     } else {
       sound('blast');
       this.shake = 0.35;
+      this.flash.position.copy(p).setY(1.2);
+      this.flash.intensity = 50;
       for (let i = 0; i < 40; i++) {
         const a = Math.random() * Math.PI * 2, sp = 0.5 + Math.random() * 2.5;
         this.particles.spawn(p.clone().setY(0.4), new THREE.Vector3(Math.cos(a) * sp, 1 + Math.random() * 3, Math.sin(a) * sp), i % 3 ? C.hit : 0xffd36b, 0.18 + Math.random() * 0.2, 0.7 + Math.random() * 0.4);
@@ -490,6 +554,8 @@ export class Sea {
   private resize(): void {
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
     this.renderer.setSize(w, h);
+    this.composer?.setSize(w, h);
+    this.bloom?.resolution.set(w, h);
     this.camera.aspect = w / h;
     const narrow = this.camera.aspect < 1.25;
     this.camera.fov = narrow ? 50 : 40;
@@ -552,6 +618,10 @@ export class Sea {
         const hov = this.hovered && this.hovered.board === o.board && this.hovered.cell === o.cell && this.hoverBox.visible;
         col.setHex(tint ?? (((rowOf(o.cell) + colOf(o.cell)) % 2) ? C.board : C.boardHi));
         if (hov) col.lerp(new THREE.Color(C.hover), 0.25);
+        this.ocean.setColorAt(i, col);
+      } else if (this.moonPath[i] > 0) {
+        const glint = this.moonPath[i] * (0.55 + 0.45 * Math.sin(o.x * 1.7 + o.z * 2.3 + t * 2.6));
+        col.setHex(C.sea).lerp(new THREE.Color(0xbfd2ff), glint * 0.5);
         this.ocean.setColorAt(i, col);
       } else if (i % 7 === 0) {
         col.setHex(C.sea).lerp(new THREE.Color(C.seaHi), 0.5 + 0.5 * Math.sin(o.x * 0.3 + o.z * 0.2 + t * 0.8));
@@ -617,7 +687,15 @@ export class Sea {
     this.shake = Math.max(0, this.shake - dt);
     const sh = this.shake * 0.25;
     this.camera.lookAt(this.camLook.x + (Math.random() - 0.5) * sh, this.camLook.y + (Math.random() - 0.5) * sh, this.camLook.z);
-    this.renderer.render(this.scene, this.camera);
+    const burning = this.fires.slice(-this.fireLights.length);
+    this.fireLights.forEach((l, i) => {
+      const f = burning[i];
+      if (!f) { l.intensity = 0; return; }
+      l.position.copy(cellPos(f.board, f.cell)).setY(0.9);
+      l.intensity = (f.strong ? 6 : 3) * (0.75 + 0.25 * Math.sin(t * 17 + i * 3) * Math.sin(t * 7.3 + i));
+    });
+    this.flash.intensity = Math.max(0, this.flash.intensity - dt * 120);
+    this.composer.render();
   }
 
   isGhostOk(): boolean { return this.ghostOk; }
