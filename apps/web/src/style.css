@@ -175,3 +175,37 @@ button:not(:disabled):active { transform: translateY(1px); }
   .chartbox figure:last-child { display: none; }
 }
 @media (hover: none) { .cursor-tag { display: none; } }
+
+/* phones */
+.phonebar { display: none; }
+@media (max-aspect-ratio: 5/4) {
+  .status .narrow-tabs { position: static; transform: none; justify-content: center; margin-top: 6px; }
+}
+@media (max-width: 600px) {
+  .top { padding: 8px 10px; gap: 6px; }
+  .logo { font-size: 15px; letter-spacing: 1px; }
+  .top button.small { padding: 5px 8px; white-space: nowrap; }
+  .acct a { display: none; }
+  .status { top: 46px; width: calc(100% - 20px); padding: 8px 10px; }
+  .status p { font-size: 13px; line-height: 1.35; }
+  .status small.dim, .status .stats { display: none; }
+  .vs { font-size: 12px; gap: 4px; }
+  .vs .sep { margin: 0 4px; }
+  .vs .me, .vs .them { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side, .chartbox { display: none; }
+  .side.open, .chartbox.open {
+    display: block; position: fixed; top: auto; left: 10px; right: 10px; bottom: 62px; width: auto; max-height: 55vh; overflow: auto; z-index: 6;
+  }
+  .side.open h3, .side.open .txs, .side.open p.dim { display: block; }
+  .chartbox.open figure:last-child, .chartbox.open .log { display: block; }
+  .chartbox.open .charts { grid-template-columns: 1fr 1fr; }
+  .phonebar { display: flex; gap: 8px; position: fixed; right: 10px; bottom: 12px; z-index: 6; pointer-events: auto; }
+  .phonebar button { padding: 9px 14px; background: rgba(9, 17, 34, .9); color: var(--ink); border: 1px solid var(--line); }
+  .phonebar button.on { background: var(--gold); color: #1a1205; }
+  .dock { bottom: 10px; width: calc(100% - 20px); padding: 8px; }
+  .dock small { display: none; }
+  .dock .row { flex-wrap: nowrap; justify-content: center; }
+  .dock .row button { padding: 9px 12px; }
+  .turn-banner { font-size: 30px; letter-spacing: 3px; }
+  .center { width: calc(100% - 20px); }
+}
