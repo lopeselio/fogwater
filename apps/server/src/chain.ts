@@ -41,6 +41,8 @@ export function call<T = unknown>(signer: string, method: string, args: object, 
     for (let attempt = 0; ; attempt++) {
       try { return await once(); } catch (e) {
         if (attempt >= 3 || !transient(e)) throw e;
+        // another signer (an overlapping revision during a rollout) moved the key's nonce on: start over with a fresh one
+        if (/InvalidNonce/i.test(String((e as Error)?.message ?? e))) accounts.delete(signer);
         await sleep(700 * (attempt + 1));
       }
     }
