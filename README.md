@@ -17,6 +17,7 @@ pnpm start            # http://localhost:8787 (server + built web app)
 
 With no NEAR keys, run `CHAIN=0 pnpm start`: everything plays the same, but nothing is written onchain.
 
+0. **First visit.** Four welcome cards explain the game (Skip or Next). In your first battle a step-by-step walkthrough waits for you to do each thing: move a ship, seal, fire. **? How to play** (or the `?` key) opens the rules, controls and how fairness works, and can replay the tour.
 1. **Battle an admiral.** Type a name, pick **Captain Marrow**. You see your waters (left) with a random fleet, and enemy waters (right) under fog. The admiral greets you; with a NEAR AI key the line is marked "✓ signed by NEAR AI TEE".
 2. **Place and seal.** Click a ship to pick it up, click a cell for its bow, **R** (or right-click) to turn it, or **Shuffle**. Press **Seal fleet**. The side panel shows "Your seal: <root>…" and an onchain `seal` transaction.
 3. **Fire.** Click a cell in the fog. A cannonball arcs over, the fog clears, and you see a splash (miss) or fire (hit). The admiral fires back; your browser answers its shot by itself (it holds your fleet), and the answer is checked against your seal. Sinking a ship shows "You sank their Frigate!".
