@@ -40,7 +40,13 @@ export interface GameRecord {
   reveals: [{ seed: string; ships: Placement[] } | null, { seed: string; ships: Placement[] } | null];
   moves: LoggedMove[];
   lines: SignedLine[];
-  chain: { created: boolean; filled: boolean; pending: ChainOp[]; txs: { what: string; hash: string }[]; error?: string };
+  chain: {
+    created: boolean; filled: boolean; pending: ChainOp[]; txs: { what: string; hash: string }[];
+    /** set when the contract refused an operation, or retries ran out: the queue stops */
+    error?: string;
+    /** a network or nonce failure being retried with backoff */
+    retry?: { n: number; msg: string };
+  };
 }
 
 const dir = join(config.dataDir, 'games');
