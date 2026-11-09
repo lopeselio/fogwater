@@ -67,6 +67,7 @@ export function publicView(g: GameRecord, you: Seat | null = null) {
       filled: g.chain.filled,
       queued: g.chain.pending.length,
       error: g.chain.error ?? null,
+      retrying: g.chain.retry ? `retry ${g.chain.retry.n}/10: ${g.chain.retry.msg}` : null,
       txs: g.chain.txs.map((t) => ({ ...t, url: explorerTx(t.hash) })),
     },
   };
@@ -302,6 +303,7 @@ function schedule(id: string, ms: number): void {
 }
 
 const MAX_MOVES = 12;
+const MAX_RETRIES = 10;
 
 /** Sends a game's queued operations in order, merging runs of moves into one `play` call. */
 async function flush(id: string): Promise<void> {
@@ -330,9 +332,20 @@ async function flush(id: string): Promise<void> {
       if (op.method === 'fill_seat') g.chain.filled = true;
       touch(g, false);
     }
+    g.chain.retry = undefined;
   } catch (e) {
-    g.chain.error = (e as Error).message.slice(0, 300);
-    console.warn(`chain ${id}: ${g.chain.error}`);
+    const msg = (e as Error).message.slice(0, 300);
+    // a refusal from the contract is final; anything else (RPCs down, rate limits, a stale nonce) never ran, so try again later
+    const refused = /failed:/.test(msg);
+    const n = (g.chain.retry?.n ?? 0) + 1;
+    if (refused || n > MAX_RETRIES) {
+      g.chain.error = msg;
+      g.chain.retry = undefined;
+    } else {
+      g.chain.retry = { n, msg };
+      schedule(id, Math.min(300_000, 15_000 * 2 ** (n - 1)));
+    }
+    console.warn(`chain ${id}: ${refused ? 'refused' : `attempt ${n}`}: ${msg}`);
     touch(g, false);
   } finally {
     flushing.delete(id);
@@ -341,7 +354,12 @@ async function flush(id: string): Promise<void> {
 
 /** On startup: carry on sending what was queued before a restart. */
 export function resumeQueues(): void {
-  for (const g of allGames()) if (g.chain.pending.length && !g.chain.error) schedule(g.id, 2000);
+  for (const g of allGames()) {
+    if (!g.chain.pending.length) continue;
+    // games that stopped on a network or nonce failure (not a contract refusal) get another go
+    if (g.chain.error && !/failed:/.test(g.chain.error)) { g.chain.error = undefined; saveGame(g); }
+    if (!g.chain.error) schedule(g.id, 2000);
+  }
 }
 
 export { cellName };
