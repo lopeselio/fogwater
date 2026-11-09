@@ -68,8 +68,8 @@ export function HowToPlay({ onClose, onReplay }: { onClose: () => void; onReplay
         <section>
           <h3>Controls</h3>
           <ul>
-            <li><b>Placing:</b> click a ship to pick it up, click a cell for its bow. <kbd>R</kbd> or right-click turns it. <kbd>Esc</kbd> puts it back. <b>Shuffle</b> deals a random fleet.</li>
-            <li><b>Battle:</b> click a cell in the enemy’s fog to fire.</li>
+            <li><b>Placing:</b> drag a ship (or click it, then click where it goes). <kbd>R</kbd>, right-click or the wheel turns it. <kbd>Esc</kbd> puts it back. <b>Shuffle</b> deals a random fleet.</li>
+            <li><b>Battle:</b> click a cell in the enemy’s fog or on the enemy chart, or aim with the arrow keys (or <kbd>WASD</kbd>) and fire with <kbd>Enter</kbd>.</li>
             <li>On a narrow screen, switch between <b>Your waters</b> and <b>Enemy waters</b> under the status bar.</li>
             <li><kbd>M</kbd> sound on or off, <kbd>?</kbd> this sheet.</li>
           </ul>
@@ -122,10 +122,10 @@ interface Step {
 
 const STEPS: Step[] = [
   { title: 'Your waters', body: 'This is your fleet, already placed at random. The enemy’s waters, on the right, are hidden in fog.', at: 'mine' },
-  { title: 'Move a ship', body: 'Click one of your ships to pick it up.', at: 'mine', done: (s) => s.holding || !s.placing },
-  { title: 'Put it down', body: 'Click a cell for its bow. Press R (or right-click) to turn it. Green means it fits, red means it doesn’t.', at: 'mine', done: (s) => !s.holding || !s.placing },
+  { title: 'Move a ship', body: 'Drag one of your ships, or click it to pick it up.', at: 'mine', done: (s) => s.holding || !s.placing },
+  { title: 'Put it down', body: 'Drop it where you like: green means it fits, red means it doesn’t. R, right-click or the mouse wheel turns it.', at: 'mine', done: (s) => !s.holding || !s.placing },
   { title: 'Seal your fleet', body: 'Happy with it? Press Seal fleet. A hash of your sea goes onchain, and your ships are locked in.', at: '.dock', done: (s) => s.sealed },
-  { title: 'Fire into the fog', body: 'Your turn: click any cell in the enemy’s waters.', at: 'enemy', done: (s) => s.myShots > 0 },
+  { title: 'Fire into the fog', body: 'Your turn: click any cell in the enemy’s waters, or on the enemy chart on the left. Arrow keys and Enter work too.', at: 'enemy', done: (s) => s.myShots > 0 },
   { title: 'Hit or miss', body: 'A splash is a miss, fire is a hit. Then the enemy fires back, and your browser answers for you with a proof that the contract checks.', at: 'center' },
   { title: 'Keep score', body: 'Hits so far are up top. Here you see both fleets (sunk ships get crossed out), the admiral’s signed lines, and every transaction onchain.', at: '.side' },
   { title: 'That’s it', body: 'Land 17 hits to win. Then both fleets are revealed and checked onchain, and Proof (JSON) has the whole battle. Press ? any time for the rules.', at: 'center' },
