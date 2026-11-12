@@ -209,3 +209,5 @@ button:not(:disabled):active { transform: translateY(1px); }
   .turn-banner { font-size: 30px; letter-spacing: 3px; }
   .center { width: calc(100% - 20px); }
 }
+
+.result .gunnery { display: flex; flex-direction: column; gap: 2px; }
