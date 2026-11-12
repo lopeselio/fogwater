@@ -122,20 +122,23 @@ interface Step {
 
 /** How this screen is used: a finger or a mouse, and whether the two waters sit side by side or behind tabs
  *  (the same breakpoint as `.narrow-tabs` in style.css). The tour's words and placement follow it. */
-interface Device { touch: boolean; tabs: boolean }
+interface Device { touch: boolean; tabs: boolean; sheets: boolean }
+const mq = (q: string): boolean => typeof matchMedia === 'function' && matchMedia(q).matches;
 const device = (): Device => ({
-  touch: typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches,
-  tabs: typeof matchMedia === 'function' && matchMedia('(max-aspect-ratio: 5/4)').matches,
+  touch: mq('(pointer: coarse)'),
+  tabs: mq('(max-aspect-ratio: 5/4)'),
+  // the side panel becomes the Info sheet (style.css, max-width: 600px)
+  sheets: mq('(max-width: 600px)'),
 });
 
-const steps = ({ touch, tabs }: Device): Step[] => [
+const steps = ({ touch, tabs, sheets }: Device): Step[] => [
   { title: 'Your waters', body: `This is your fleet, already placed at random. The enemy’s waters${tabs ? ' (the Enemy waters tab)' : ', on the right,'} are hidden in fog.`, at: 'mine' },
   { title: 'Move a ship', body: touch ? 'Tap one of your ships to pick it up.' : 'Drag one of your ships, or click it to pick it up.', at: 'mine', done: (s) => s.holding || !s.placing },
   { title: 'Put it down', body: touch ? 'Tap where its bow goes: green means it fits, red means it doesn’t. Turn (under your waters) rotates it.' : 'Drop it where you like: green means it fits, red means it doesn’t. R, right-click or the mouse wheel turns it.', at: 'mine', done: (s) => !s.holding || !s.placing },
   { title: 'Seal your fleet', body: 'Happy with it? Press Seal fleet. A hash of your sea goes onchain, and your ships are locked in.', at: '.dock', done: (s) => s.sealed },
   { title: 'Fire into the fog', body: touch ? `Your turn: tap any cell in the enemy’s waters${tabs ? ' (the view switches there by itself)' : ''}, or on the Chart.` : `Your turn: click any cell in the enemy’s waters, or on the enemy chart${tabs ? '' : ' on the left'}. Arrow keys and Enter work too.`, at: 'enemy', done: (s) => s.myShots > 0 },
   { title: 'Hit or miss', body: 'A splash is a miss, fire is a hit. Then the enemy fires back, and your browser answers for you with a proof that the contract checks.', at: 'center' },
-  tabs && touch
+  sheets
     ? { title: 'Keep score', body: 'Hits so far are up top. Info (bottom right) shows both fleets (sunk ships get crossed out), the admiral’s signed lines and every transaction onchain; Chart shows every shot.', at: '.phonebar' }
     : { title: 'Keep score', body: 'Hits so far are up top. Here you see both fleets (sunk ships get crossed out), the admiral’s signed lines, and every transaction onchain.', at: '.side' },
   { title: 'That’s it', body: `Land 17 hits to win. Then both fleets are revealed and checked onchain, and Proof (JSON) has the whole battle. ${touch ? 'Tap ?' : 'Press ?'} any time for the rules.`, at: 'center' },
