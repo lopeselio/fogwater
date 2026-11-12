@@ -623,10 +623,25 @@ export class Sea {
     this.camera.fov = narrow ? 50 : 40;
     this.camera.updateProjectionMatrix();
     if (!narrow || this.focus === 'both') {
-      // fit both boards: back off as the screen gets narrower
-      const dist = Math.max(15.5, 26 / Math.min(1.9, this.camera.aspect));
-      this.camGoal.pos.set(0, dist * 1.02, dist * 0.92);
-      this.camGoal.look.set(0, 0, 0.8);
+      // fit both boards: back off as the screen gets narrower, and further until both waters with their
+      // row letters and column numbers sit between the side panels (the chart on the left, fleets on the
+      // right: about 290px each on a wide screen) instead of under them
+      let dist = Math.max(15.5, 26 / Math.min(1.9, this.camera.aspect));
+      const limit = w > 900 ? 1 - Math.min(0.5, (2 * 290) / w) : 0.97;
+      const probe = this.camera.clone();
+      const corners = [-1, 1].flatMap((sx) => [6.4, -5.6].map((z) => new THREE.Vector3(sx * 12.6, 0, z)));
+      // with panels at the sides, look more steeply down: the near edge then widens less, so the boards fit closer
+      // (and aim a little further out, so the boards sit lower, clear of the status card)
+      const [ky, kz, lz] = limit < 0.9 ? [1.15, 0.7, -0.6] : [1.02, 0.92, 0.8];
+      for (let i = 0; i < 40; i++) {
+        probe.position.set(0, dist * ky, dist * kz);
+        probe.lookAt(0, 0, lz);
+        probe.updateMatrixWorld();
+        if (corners.every((c) => Math.abs(c.clone().project(probe).x) <= limit)) break;
+        dist += 0.5;
+      }
+      this.camGoal.pos.set(0, dist * ky, dist * kz);
+      this.camGoal.look.set(0, 0, lz);
     } else {
       // one water at a time: back off until the board and its labels fit the screen's width,
       // and look more steeply down so a tall phone screen shows the whole water
