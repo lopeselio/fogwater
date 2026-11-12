@@ -117,7 +117,8 @@ blockquote b { font-style: normal; display: block; font-size: 11px; color: var(-
 .ob-card.wide { width: min(760px, 100%); text-align: left; }
 .ob-card h2 { font: 700 20px Silkscreen, monospace; color: var(--gold); margin: 6px 0 10px; letter-spacing: 1px; }
 .ob-card p { color: #c8d4ee; margin: 0 0 8px; }
-.ob-art { font-size: 54px; line-height: 1; filter: drop-shadow(0 0 18px rgba(255, 207, 90, .45)); }
+.ob-art { margin: -4px -4px 6px; }
+.card-art { display: block; width: 100%; max-width: 300px; height: auto; margin: 0 auto; border-radius: 12px; box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgba(0, 0, 0, .45); }
 .ob-dots { display: flex; gap: 6px; justify-content: center; margin: 12px 0 4px; }
 .ob-dots i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, .2); }
 .ob-dots i.on { background: var(--gold); }
