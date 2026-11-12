@@ -120,21 +120,34 @@ interface Step {
   done?: (s: CoachState) => boolean;
 }
 
-const STEPS: Step[] = [
-  { title: 'Your waters', body: 'This is your fleet, already placed at random. The enemy’s waters, on the right, are hidden in fog.', at: 'mine' },
-  { title: 'Move a ship', body: 'Drag one of your ships, or click it to pick it up.', at: 'mine', done: (s) => s.holding || !s.placing },
-  { title: 'Put it down', body: 'Drop it where you like: green means it fits, red means it doesn’t. R, right-click or the mouse wheel turns it.', at: 'mine', done: (s) => !s.holding || !s.placing },
+/** How this screen is used: a finger or a mouse, and whether the two waters sit side by side or behind tabs
+ *  (the same breakpoint as `.narrow-tabs` in style.css). The tour's words and placement follow it. */
+interface Device { touch: boolean; tabs: boolean }
+const device = (): Device => ({
+  touch: typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches,
+  tabs: typeof matchMedia === 'function' && matchMedia('(max-aspect-ratio: 5/4)').matches,
+});
+
+const steps = ({ touch, tabs }: Device): Step[] => [
+  { title: 'Your waters', body: `This is your fleet, already placed at random. The enemy’s waters${tabs ? ' (the Enemy waters tab)' : ', on the right,'} are hidden in fog.`, at: 'mine' },
+  { title: 'Move a ship', body: touch ? 'Tap one of your ships to pick it up.' : 'Drag one of your ships, or click it to pick it up.', at: 'mine', done: (s) => s.holding || !s.placing },
+  { title: 'Put it down', body: touch ? 'Tap where its bow goes: green means it fits, red means it doesn’t. Turn (under your waters) rotates it.' : 'Drop it where you like: green means it fits, red means it doesn’t. R, right-click or the mouse wheel turns it.', at: 'mine', done: (s) => !s.holding || !s.placing },
   { title: 'Seal your fleet', body: 'Happy with it? Press Seal fleet. A hash of your sea goes onchain, and your ships are locked in.', at: '.dock', done: (s) => s.sealed },
-  { title: 'Fire into the fog', body: 'Your turn: click any cell in the enemy’s waters, or on the enemy chart on the left. Arrow keys and Enter work too.', at: 'enemy', done: (s) => s.myShots > 0 },
+  { title: 'Fire into the fog', body: touch ? `Your turn: tap any cell in the enemy’s waters${tabs ? ' (the view switches there by itself)' : ''}, or on the Chart.` : `Your turn: click any cell in the enemy’s waters, or on the enemy chart${tabs ? '' : ' on the left'}. Arrow keys and Enter work too.`, at: 'enemy', done: (s) => s.myShots > 0 },
   { title: 'Hit or miss', body: 'A splash is a miss, fire is a hit. Then the enemy fires back, and your browser answers for you with a proof that the contract checks.', at: 'center' },
-  { title: 'Keep score', body: 'Hits so far are up top. Here you see both fleets (sunk ships get crossed out), the admiral’s signed lines, and every transaction onchain.', at: '.side' },
-  { title: 'That’s it', body: 'Land 17 hits to win. Then both fleets are revealed and checked onchain, and Proof (JSON) has the whole battle. Press ? any time for the rules.', at: 'center' },
+  tabs && touch
+    ? { title: 'Keep score', body: 'Hits so far are up top. Info (bottom right) shows both fleets (sunk ships get crossed out), the admiral’s signed lines and every transaction onchain; Chart shows every shot.', at: '.phonebar' }
+    : { title: 'Keep score', body: 'Hits so far are up top. Here you see both fleets (sunk ships get crossed out), the admiral’s signed lines, and every transaction onchain.', at: '.side' },
+  { title: 'That’s it', body: `Land 17 hits to win. Then both fleets are revealed and checked onchain, and Proof (JSON) has the whole battle. ${touch ? 'Tap ?' : 'Press ?'} any time for the rules.`, at: 'center' },
 ];
 
 /** The hands-on walkthrough in your first battle. */
 export function Coach({ state, onDone }: { state: CoachState; onDone: () => void }) {
   const [i, setI] = useState(() => (state.sealed ? 4 : 0));
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const [dev, setDev] = useState(device);
+  useEffect(() => { const on = (): void => setDev(device()); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on); }, []);
+  const STEPS = steps(dev);
   const step = STEPS[i];
   const finish = (): void => { writeSeen({ toured: true }); onDone(); };
   const next = (): void => { if (i < STEPS.length - 1) setI(i + 1); else finish(); };
@@ -157,6 +170,11 @@ export function Coach({ state, onDone }: { state: CoachState; onDone: () => void
     const below = rect.top < window.innerHeight / 2;
     const left = Math.min(Math.max(16, rect.left + rect.width / 2 - 160), window.innerWidth - 336);
     style = below ? { top: rect.bottom + 12, left } : { top: Math.max(60, rect.top - 12), left, transform: 'translateY(-100%)' };
+  } else if (dev.tabs) {
+    // one water fills the width: sit just above the bottom controls, under the board, never over its rows
+    const bar = [...document.querySelectorAll('.dock, .phonebar')].map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0);
+    const top = bar.length ? Math.min(...bar.map((r) => r.top)) : window.innerHeight;
+    style = { left: '50%', bottom: window.innerHeight - top + 8, transform: 'translateX(-50%)' };
   } else if (step.at === 'mine') style = { left: '4%', bottom: '18%' };
   else if (step.at === 'enemy') style = { right: '4%', bottom: '18%' };
   else style = { left: '50%', bottom: '14%', transform: 'translateX(-50%)' };
