@@ -20,13 +20,16 @@ interface Bundle {
 }
 interface ChainGame { seats: string[]; roots: (string | null)[]; phase: number; shots: { cell: number; hit: boolean; sunk: number | null }[][]; winner: number | null; reason: string; revealed: boolean[] }
 
-const bundle = (await (await fetch(`${base}/api/games/${id}/proof`)).json()) as Bundle & { error?: string };
+const res = await fetch(`${base}/api/games/${id}/proof`).catch((e: Error) => fail(`couldn't reach ${base} (${(e.cause as { code?: string } | undefined)?.code ?? e.message})`));
+const bundle = (await res.json().catch(() => fail(`${base} didn't answer with a proof bundle (HTTP ${res.status})`))) as Bundle & { error?: string };
 if (bundle.error) fail(bundle.error);
 if (!bundle.over) fail('the game isn’t over yet');
 
-const RPCS = ['https://rpc.testnet.fastnear.com', 'https://near-testnet.drpc.org', 'https://testnet-rpc.intea.rs'];
+// public testnet RPCs; fastnear goes last because it answers most keyless calls with 429 today
+const RPCS = ['https://near-testnet.drpc.org', 'https://testnet-rpc.intea.rs', 'https://rpc.testnet.fastnear.com'];
 async function viewGame(): Promise<ChainGame> {
-  for (const rpc of RPCS) {
+  // three rounds over every RPC, backing off between rounds, before giving up
+  for (let round = 0; round < 3; round++, await new Promise((r) => setTimeout(r, 1000 * 2 ** round))) for (const rpc of RPCS) {
     try {
       const r = (await (await fetch(rpc, {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -35,7 +38,7 @@ async function viewGame(): Promise<ChainGame> {
       if (r.result) return JSON.parse(Buffer.from(r.result.result).toString('utf8')) as ChainGame;
     } catch { /* next RPC */ }
   }
-  return fail('could not read the game from the contract');
+  return fail('could not read the game from the contract on any public testnet RPC; try again in a minute');
 }
 const cg = await viewGame();
 
