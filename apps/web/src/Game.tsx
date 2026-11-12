@@ -375,7 +375,7 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
   let status: string;
   if (canJoin) status = `${view.seats[0].name} challenges you to a sea battle.`;
   else if (!seated) status = 'You’re watching this battle.';
-  else if (d.phase === 'placing') status = placing ? (holding === null ? (coarse ? 'Place your fleet: tap a ship, then tap where it goes. Turn rotates it.' : 'Place your fleet: click a ship to move it, or Shuffle.') : `Moving the ${FLEET[holding].name}: drop it on a green spot. R, right-click or the wheel turns it.`) : !view.seats[1] ? 'Fleet sealed. Send the link to a friend.' : `Fleet sealed. Waiting for ${foe?.name} to place theirs…`;
+  else if (d.phase === 'placing') status = placing ? (holding === null ? (coarse ? 'Place your fleet: tap a ship, then tap where it goes. Turn rotates it.' : 'Place your fleet: click a ship to move it, or Shuffle.') : `Moving the ${FLEET[holding].name}: ${coarse ? 'tap a green spot for its bow. Turn rotates it.' : 'drop it on a green spot. R, right-click or the wheel turns it.'}`) : !view.seats[1] ? 'Fleet sealed. Send the link to a friend.' : `Fleet sealed. Waiting for ${foe?.name} to place theirs…`;
   else if (d.phase === 'playing') {
     if (d.pending?.by === me) status = `Your shot at ${cellName(d.pending.cell)} is in the air… waiting for ${foe?.name} to answer.`;
     else if (d.pending) status = `${foe?.name} fired at ${cellName(d.pending.cell)}…`;
@@ -439,7 +439,7 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
         <div className="card dock">
           <div className="row">
             <button className="ghost" onClick={() => { setShips(randomFleet(rng(newSeed()))); setHolding(null); }}>Shuffle</button>
-            <button className="ghost" disabled={holding === null} onClick={() => setVertical((x) => !x)}>Turn (R)</button>
+            <button className="ghost" disabled={holding === null} onClick={() => setVertical((x) => !x)}>{coarse ? 'Turn' : 'Turn (R)'}</button>
             <button disabled={busy || holding !== null || !isLegal(ships)} onClick={() => void sealFleet()}>{busy ? 'Sealing…' : 'Seal fleet'}</button>
           </div>
           <small className="dim">Sealing puts a hash of your sea onchain{mine?.kind === 'account' ? ' from your wallet (gasless)' : ''}. Your ships stay in this browser.</small>
