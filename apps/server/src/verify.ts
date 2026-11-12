@@ -25,37 +25,59 @@ const bundle = (await res.json().catch(() => fail(`${base} didn't answer with a 
 if (bundle.error) fail(bundle.error);
 if (!bundle.over) fail('the game isn’t over yet');
 
-// public testnet RPCs; fastnear goes last because it answers most keyless calls with 429 today
-const RPCS = ['https://near-testnet.drpc.org', 'https://testnet-rpc.intea.rs', 'https://rpc.testnet.fastnear.com'];
-async function viewGame(): Promise<ChainGame> {
-  // three rounds over every RPC, backing off between rounds, before giving up
-  for (let round = 0; round < 3; round++, await new Promise((r) => setTimeout(r, 1000 * 2 ** round))) for (const rpc of RPCS) {
+// public testnet RPCs; fastnear goes last because it answers most keyless calls with 429 today.
+// VERIFY_RPC puts another endpoint first.
+const RPCS = [process.env.VERIFY_RPC, 'https://near-testnet.drpc.org', 'https://testnet-rpc.intea.rs', 'https://rpc.testnet.fastnear.com']
+  .filter((u, i, a): u is string => !!u && a.indexOf(u) === i);
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** One read of the game from the contract, starting at RPC `from`; three rounds over every RPC with backoff. */
+async function viewGame(from = 0): Promise<ChainGame> {
+  for (let round = 0; round < 3; round++, await sleep(1000 * 2 ** round)) for (let k = 0; k < RPCS.length; k++) {
+    const rpc = RPCS[(from + k) % RPCS.length];
     try {
       const r = (await (await fetch(rpc, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'query', params: { request_type: 'call_function', finality: 'final', account_id: bundle.contract, method_name: 'get_game', args_base64: Buffer.from(JSON.stringify({ id })).toString('base64') } }),
-      })).json()) as { result?: { result: number[] } };
-      if (r.result) return JSON.parse(Buffer.from(r.result.result).toString('utf8')) as ChainGame;
+        signal: AbortSignal.timeout(15_000),
+      })).json()) as { result?: { result?: number[] } };
+      const g = r.result?.result ? (JSON.parse(Buffer.from(r.result.result).toString('utf8')) as ChainGame | null) : null;
+      if (g) return g;
     } catch { /* next RPC */ }
   }
   return fail('could not read the game from the contract on any public testnet RPC; try again in a minute');
 }
-const cg = await viewGame();
 
-if (cg.roots[0] !== bundle.roots[0] || cg.roots[1] !== bundle.roots[1]) fail('the sealed roots differ from the contract’s');
-ok(`both fleet roots match the contract (${bundle.contract})`);
-
-// replay every move with the rules; each answer must open the defender's sealed root
+// replay every move with the rules from the proof bundle; each answer must open the defender's sealed root
 const d = newDuel(id);
-commit(d, 0, cg.roots[0]!);
-commit(d, 1, cg.roots[1]!);
+if (!bundle.roots[0] || !bundle.roots[1]) fail('the proof bundle has no sealed roots');
+commit(d, 0, bundle.roots[0]!);
+commit(d, 1, bundle.roots[1]!);
 let answers = 0;
 for (const m of bundle.moves) {
   if (m.t === 'fire') { fire(d, m.seat, m.cell); continue; }
-  if (!verifyOpening(id, cg.roots[m.seat]!, m.opening)) fail(`answer to ${m.opening.cell} doesn’t open seat ${m.seat + 1}’s root`);
+  if (!verifyOpening(id, bundle.roots[m.seat]!, m.opening)) fail(`answer to ${m.opening.cell} doesn’t open seat ${m.seat + 1}’s root`);
   answer(d, m.seat, m.opening, m.sunk);
   answers++;
 }
+
+// The referee sends moves in batches and the last ones (and the reveals) can still be landing when a game has just
+// ended, and a lagging RPC node can serve an older block. Until the contract shows the game settled with every move,
+// read again (from the next RPC) instead of reporting a mismatch on a partial record.
+const caughtUp = (g: ChainGame): boolean => g.phase === 3 && [0, 1].every((s) => g.shots[s].length >= d.shots[s].length);
+let cg = await viewGame();
+for (let tries = 1; !caughtUp(cg) && tries < 5; tries++) {
+  console.log(`· the contract has ${cg.shots[0].length + cg.shots[1].length} of ${d.shots[0].length + d.shots[1].length} shots${cg.phase === 3 ? '' : ' and hasn’t settled yet'}; reading again…`);
+  await sleep(3000 * tries);
+  cg = await viewGame(tries);
+}
+if (!caughtUp(cg)) {
+  console.log(`✗ the contract hasn’t recorded the whole game yet (${cg.shots[0].length + cg.shots[1].length} of ${d.shots[0].length + d.shots[1].length} shots, ${cg.phase === 3 ? 'settled' : 'not settled'}): its last moves may still be on their way. Try again in a minute.`);
+  process.exit(2);
+}
+
+if (cg.roots[0] !== bundle.roots[0] || cg.roots[1] !== bundle.roots[1]) fail('the sealed roots differ from the contract’s');
+ok(`both fleet roots match the contract (${bundle.contract})`);
 ok(`all ${answers} answers open the sealed roots (Merkle proofs checked)`);
 
 for (const s of [0, 1] as const) {
