@@ -30,7 +30,7 @@ export function App() {
 
   useEffect(() => {
     void api<ServerConfig>('/config').then((c) => { setCfg(c); setContract(c.contract); }).catch(() => undefined);
-    void api<{ accountId: string }>('/me').then((m) => setAccount(m.accountId)).catch(() => setAccount(null));
+    void api<{ accountId: string } | null>('/me').then((m) => setAccount(m?.accountId ?? null)).catch(() => setAccount(null));
     const pop = (): void => setGameId(gameIdFromPath());
     window.addEventListener('popstate', pop);
     const key = (e: KeyboardEvent): void => {
