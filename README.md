@@ -1,13 +1,17 @@
 # Fogwater
 
+> Part of the **NEAR Arcade** submission for NEAR HACKATHON (https://arcade.lopeselio.online, [github.com/lopeselio/near-arcade](https://github.com/lopeselio/near-arcade)); the author's other submission is **Signalfire** ([github.com/lopeselio/signalfire](https://github.com/lopeselio/signalfire)).
+
 A night sea battle on NEAR, in voxels. Place your fleet, seal it, and trade cannon fire with an AI admiral or a friend. Your fleet is **sealed onchain as a Merkle root** before the first shot, every "hit" or "miss" is **proven against that seal by the contract**, and both fleets are **revealed and checked** when the last ship sinks. Nobody sees your ships until then: not your rival, not the AI, not our server.
 
-Built for NEAR HACKATHON (Nov 2026). Tracks: **Games With Real Economies**, **Privacy & Private AI**. Design: [DESIGN.md](DESIGN.md).
+Built for NEAR HACKATHON (Nov 2026). In the NEAR Arcade, Fogwater is claimed for the tracks **Games With Real Economies** (games) and **Privacy & Private AI** (privacy). Design: [DESIGN.md](DESIGN.md).
 
-- Contract (testnet): [`fogwater.testnet`](https://testnet.nearblocks.io/address/fogwater.testnet). Referee: [`fogwater-ref.testnet`](https://testnet.nearblocks.io/address/fogwater-ref.testnet). Gasless relayer: `fogwater-relay.testnet`.
+- Contract (testnet): [`fogwater.testnet`](https://testnet.nearblocks.io/address/fogwater.testnet). Referee: [`fogwater-ref.testnet`](https://testnet.nearblocks.io/address/fogwater-ref.testnet). Gasless relayer: [`fogwater-relay.testnet`](https://testnet.nearblocks.io/address/fogwater-relay.testnet) (pays for signed-in captains' `seal` meta-transactions).
 - Hosted: https://fogwater.lopeselio.online/, also inside the NEAR Arcade at https://arcade.lopeselio.online/fogwater.
 
 ## Try it (do X, see Y)
+
+Every step below works on the hosted game, https://fogwater.lopeselio.online/. To run it yourself:
 
 ```bash
 pnpm install
@@ -18,24 +22,51 @@ pnpm start            # http://localhost:8787 (server + built web app)
 With no NEAR keys, run `CHAIN=0 pnpm start`: everything plays the same, but nothing is written onchain.
 
 0. **First visit.** Four welcome cards explain the game (Skip or Next). In your first battle a step-by-step walkthrough waits for you to do each thing: move a ship, seal, fire. **? How to play** (or the `?` key) opens the rules, controls and how fairness works, and can replay the tour.
-1. **Battle an admiral.** Type a name, pick **Captain Marrow**. You see your waters (left) with a random fleet, and enemy waters (right) under fog. The admiral greets you; with a NEAR AI key the line is marked "✓ signed by NEAR AI TEE".
-2. **Place and seal.** Click a ship to pick it up, click a cell for its bow, **R** (or right-click) to turn it, or **Shuffle**. Press **Seal fleet**. The side panel shows "Your seal: <root>…" and an onchain `seal` transaction.
+1. **Battle an admiral.** Type a name, pick **Captain Marrow**. You see your waters (left) with a random fleet, and enemy waters (right) under fog; on a phone they are two tabs, **Your waters** and **Enemy waters**, under the status bar. The admiral greets you; with a NEAR AI key the line is marked "✓ signed by NEAR AI TEE".
+2. **Place and seal.** Click a ship to pick it up, click a cell for its bow, **R** (or right-click) to turn it, or **Shuffle** (on a phone: tap a ship, tap where its bow goes, **Turn** rotates it). Press **Seal fleet**. The side panel shows "Your seal: <root>…" and an onchain `seal` transaction.
 3. **Fire.** Click a cell in the fog. A cannonball arcs over, the fog clears, and you see a splash (miss) or fire (hit). The admiral fires back; your browser answers its shot by itself (it holds your fleet), and the answer is checked against your seal. Sinking a ship shows "You sank their Frigate!".
-4. **Win or lose.** At 17 hits both fleets are revealed: the fog lifts and the admiral's ships appear. The panel says the contract rebuilt both seas and found them legal. **Proof (JSON)** opens the full move log with every opening.
-5. **Check it yourself**, with no keys and without trusting our server:
+4. **Win or lose.** At 17 hits both fleets are revealed: the fog lifts and the admiral's ships appear. The end panel names the winner, shows both captains' shots and accuracy (yours under "You"), and says the contract rebuilt both seas and found them legal. **Proof (JSON)** opens the full move log with every opening.
+5. **Check it yourself**, with no keys and without trusting our server. The end panel prints the command for your own game; this one is a hosted game played by `pnpm e2e` on 12 Nov 2026 (output pasted as run that day):
 
    ```
-   pnpm verify <gameId> https://fogwater.lopeselio.online
+   pnpm install
+   pnpm verify 066a93d24a39 https://fogwater.lopeselio.online
    ✓ both fleet roots match the contract (fogwater.testnet)
-   ✓ all 126 answers open the sealed roots (Merkle proofs checked)
+   ✓ all 102 answers open the sealed roots (Merkle proofs checked)
    ✓ the replayed shots match the contract’s record
    ✓ seat 1's revealed fleet is legal, matches its root and every “sunk” report
    ✓ seat 2's revealed fleet is legal, matches its root and every “sunk” report
-   ✓ winner: seat 2 (fleet sunk); hits 8/17 vs 17/17
+   ✓ winner: seat 2 (fleet sunk); hits 10/17 vs 17/17
    ```
+
+   The host argument defaults to https://fogwater.lopeselio.online. The contract is read through public testnet RPCs (drpc, then intea, then fastnear), retrying with backoff if one rate-limits. `524ed845912f` is another hosted game that passes.
 6. **Challenge a friend.** **Create a challenge link**, place and seal your fleet, and send the link (Copy / Share). Your friend opens it, takes the second seat, seals theirs, and you play: live if you're both there, or one move at a time (3 days per move). The tab title shows "● Your move". **Your battles** on the harbour lists every game this browser plays.
 7. **Sign in with NEAR** (top right; NEAR Connect: Meteor, Intear, HOT, MyNearWallet, …). The wallet signs "Sign in to <host>" (NEP-413); Better Auth + better-near-auth start a session. Signed-in captains seal their fleet **from their own wallet**, gasless (a NEP-366 meta-transaction paid by `fogwater-relay.testnet`), and are ranked in the **Admirals' ledger** (`leaderboard` on the contract).
-8. **Headless:** `pnpm --filter @fogwater/server e2e http://localhost:8787 widow` plays a full game as a browser would and prints every transaction.
+8. **Headless:** `pnpm --filter @fogwater/server e2e https://fogwater.lopeselio.online widow` (or `http://localhost:8787`) plays a full game as a browser would and prints every transaction. The run behind the example above:
+
+   ```
+   game 066a93d24a39 vs widow
+   phase done, winner seat 1 (fleet sunk); shots 51 vs 51
+     create_game            https://testnet.nearblocks.io/txns/MmQGYNL8e6A5TxxT3BekR4VpJU4Dy4BMxian1mfBi1b
+     seal (admiral)         https://testnet.nearblocks.io/txns/AaLR9TL2oeDwnSw5gnhyKLHiTM51DXwCM13cBJpvDDws
+     seal (E2E)             https://testnet.nearblocks.io/txns/EgTuZDkYao96Rpp3FQsdHqgPjnReeUaYaXBVYxNNokjW
+     play ×12               https://testnet.nearblocks.io/txns/CpVdw2vJpwTMSyYVM3EQhZ9qka9BYiLFKqne1CDdnPYm
+     … 7 more play ×12 batches …
+     play ×12               https://testnet.nearblocks.io/txns/2G3Q5dcr9sDo4nDiQko5CaR9fcySXS7wZXD7HowzG19N
+   check it: pnpm verify 066a93d24a39 https://fogwater.lopeselio.online
+   ```
+
+   (The e2e counts seats from 0, verify from 1: both name The Grey Widow. The two `reveal` transactions follow; the game's **Proof (JSON)** at https://fogwater.lopeselio.online/api/games/066a93d24a39/proof lists all of them.)
+
+### A signed-in game (wallet sign-in, relayed seal, the Admirals' ledger)
+
+> **Placeholder, to be filled after the author's signed-in wallet test.** Until then this section has no evidence: guest games are sealed by the referee, and the contract's `leaderboard` was `[]` on 12 Nov 2026.
+
+- Game: `<game id>`, played signed in as `<account>.testnet` (hosted).
+- Relayed `seal` from the captain's own key, paid by `fogwater-relay.testnet`: `https://testnet.nearblocks.io/txns/<hash>`. The signer is the captain's account, the receiver is `fogwater.testnet`, and it went through the relayer as a NEP-366 delegate action.
+- `pnpm verify <game id> https://fogwater.lopeselio.online`: `<paste output>`.
+- The Admirals' ledger after that game: `curl -s https://fogwater.lopeselio.online/api/leaderboard` or `near contract call-function as-read-only fogwater.testnet leaderboard json-args '{"limit":20}' network-config testnet now`: `<paste output>`.
+
 
 ## How it works
 
@@ -72,7 +103,7 @@ pnpm sim 300                         # admirals' shots-to-win
 ## Lineage and disclosures
 
 - **Genre.** The grid sea battle is a public-domain classic. The look (a moonlit voxel world, fog of war) and the idea of hidden information enforced by cryptography were inspired by two hackathon games we admired: [Nightfall](https://github.com/codeswithroh/nightfall) and [Who Rug Us?](https://github.com/AiltonSavio/who-rug-us-monorepo), both on Solana/MagicBlock. Fogwater shares no code or assets with them; its privacy comes from Merkle commitments checked by a NEAR contract.
-- **Other projects.** Independent of our other NEAR HACKATHON games (Bazaar of Liars, Realm Ledger, Parkwright, Sushi Sabotage); it uses the same sign-in pattern (Better Auth + better-near-auth) and sits beside them in the NEAR Arcade.
+- **The NEAR Arcade.** Fogwater is one of the nine games in the author's NEAR Arcade submission (https://arcade.lopeselio.online, [github.com/lopeselio/near-arcade](https://github.com/lopeselio/near-arcade)). It has its own repo, contract, rules and server, and shares the arcade's sign-in pattern (Better Auth + better-near-auth). The author's other hackathon submission is [Signalfire](https://github.com/lopeselio/signalfire).
 - **Libraries:** three.js, React, better-auth and better-near-auth, near-api-js, near-kit, @noble/hashes, ws, Vite, near-sdk (Rust).
 - **Assets:** every model is procedural boxes in `apps/web/src/scene.ts`; sounds are synthesised in WebAudio; fonts are Inter and Silkscreen (Google Fonts, OFL).
 
