@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { CardArt } from './Art.tsx';
 
 // First-run experience, like the other arcade games: a few welcome cards, a hands-on walkthrough in
 // your first battle that waits for you to actually do each thing, and a "How to play" sheet that's
@@ -36,7 +37,7 @@ export function Welcome({ onDone }: { onDone: () => void }) {
   const c = CARDS[i];
   return (
     <Modal label="Welcome to Fogwater" onClose={done}>
-      <div className="ob-art" aria-hidden="true">{c.art}</div>
+      <div className="ob-art" aria-hidden="true"><CardArt i={i} /></div>
       <h2>{c.title}</h2>
       <p>{c.body}</p>
       <div className="ob-dots" aria-hidden="true">{CARDS.map((_, k) => <i key={k} className={k === i ? 'on' : ''} />)}</div>
