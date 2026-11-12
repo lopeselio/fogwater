@@ -417,7 +417,7 @@ export class Sea {
 
   private buildFog(): void {
     const per = 3;
-    this.fog = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0x8fa3c4, transparent: true, opacity: 0.3, depthWrite: false }), CELLS * per);
+    this.fog = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xc9d4ea, emissive: 0x27344d, transparent: true, opacity: 0.5, depthWrite: false }), CELLS * per);
     this.fog.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     for (let cell = 0; cell < CELLS; cell++) {
       for (let k = 0; k < per; k++) {
@@ -486,13 +486,17 @@ export class Sea {
     const p = cellPos(board, cell);
     const g = new THREE.Group();
     if (kind === 'miss') {
-      const peg = box(0.18, 0.4, 0.18, C.miss); peg.position.y = 0.25; g.add(peg);
-      const cap = box(0.22, 0.1, 0.22, 0x4f86c6); cap.position.y = 0.48; g.add(cap);
-      this.tileTint.set(key, 0x16314f);
+      // a pale buoy on cleared, darker water: reads as "empty" even on a small screen
+      const peg = box(0.24, 0.42, 0.24, C.miss, 0x5f7da6); peg.position.y = 0.25; g.add(peg);
+      const cap = box(0.3, 0.1, 0.3, 0x9fd0ff, 0x3f7fc0); cap.position.y = 0.5; g.add(cap);
+      this.tileTint.set(key, 0x0b1a30);
     } else {
-      const char = box(0.5, 0.12, 0.5, 0x1a0d08); char.position.y = 0.08; g.add(char);
-      const ember = box(0.2, 0.2, 0.2, C.hit, C.hit); ember.position.y = 0.2; g.add(ember);
-      this.tileTint.set(key, kind === 'wreck' ? 0x2a1210 : 0x4a1a12);
+      const char = box(0.36, 0.1, 0.36, 0x1a0d08); char.position.y = 0.06; g.add(char);
+      const ember = box(0.3, 0.26, 0.3, C.hit, C.hit); ember.position.y = 0.22; g.add(ember);
+      // a warm halo so a hit reads at a glance, even small on a phone
+      const halo = glow(kind === 'wreck' ? 0xff7a40 : C.hit, kind === 'wreck' ? 0.9 : 1.4); halo.position.y = 0.35; g.add(halo);
+      // a hit tile glows red-orange; a sunk ship's tiles go darker but stay warm
+      this.tileTint.set(key, kind === 'wreck' ? 0x6a2414 : 0xb0361a);
       this.fires.push({ board, cell, strong: kind === 'hit' });
     }
     g.position.copy(p);
