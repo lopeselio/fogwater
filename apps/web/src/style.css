@@ -175,6 +175,9 @@ button:not(:disabled):active { transform: translateY(1px); }
   .chartbox figure:last-child { display: none; }
 }
 @media (hover: none) { .cursor-tag { display: none; } }
+@media (pointer: coarse) {
+  .top button, .top button.small { min-height: 40px; min-width: 40px; padding: 8px 12px; white-space: nowrap; }
+}
 
 /* phones */
 .phonebar { display: none; }
