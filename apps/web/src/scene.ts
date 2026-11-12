@@ -200,6 +200,9 @@ export class Sea {
   private fireLights: THREE.PointLight[] = [];
   private flash: THREE.PointLight;
   private moonPath: number[] = []; // per ocean voxel: how much moonlight it catches
+  private frames = new THREE.Group(); // the two waters' frames, posts and coordinates
+  private harbour = false; // the menu's vignette: open sea, no boards, ships sailing past
+  private sailing: { g: THREE.Group; speed: number; z: number; x0: number }[] = [];
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -244,6 +247,7 @@ export class Sea {
     this.buildFrames();
     this.buildIsland();
     this.buildFog();
+    this.buildSailing();
 
     const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(0.98, 0.5, 0.98));
     this.hoverBox = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: C.hover, toneMapped: false }));
@@ -365,20 +369,48 @@ export class Sea {
         const lamp = box(0.2, 0.2, 0.2, C.lantern, C.lantern); lamp.position.set(x0 + sx * h, 1.05, sz * h); g.add(lamp);
         const halo = glow(C.lantern, 0.9); halo.position.copy(lamp.position); g.add(halo);
       }
-      this.scene.add(g);
+      this.frames.add(g);
       // coordinates: A–J down the side, 1–10 along the near edge
       for (let i = 0; i < SIZE; i++) {
         const r = textSprite('ABCDEFGHIJ'[i], 0.42, '#8fa6c8');
         r.position.set(x0 - h - 0.55, 0.3, i - 4.5);
         const c = textSprite(String(i + 1), 0.42, '#8fa6c8');
         c.position.set(x0 + i - 4.5, 0.3, h + 0.6);
-        this.scene.add(r, c);
+        this.frames.add(r, c);
       }
       const title = textSprite(b === 0 ? 'YOUR WATERS' : 'ENEMY WATERS', 0.62, b === 0 ? '#9fe3c4' : '#ffb59c');
       title.position.set(x0, 0.4, h + 1.45);
       this.labels.push(title);
-      this.scene.add(title);
+      this.frames.add(title);
     }
+    this.scene.add(this.frames);
+  }
+
+  /** A few ships sailing past the lighthouse, seen only from the harbour. */
+  private buildSailing(): void {
+    for (const [k, z, speed, x0] of [[0, 3, 0.5, -4], [2, -3.5, -0.42, 12], [1, -8, 0.3, -16]] as const) {
+      const g = buildShip(k);
+      g.visible = false;
+      if (speed < 0) g.rotation.y = Math.PI;
+      // each ship carries its own lantern light (dark until the harbour shows them)
+      const lamp = new THREE.PointLight(0xffb45a, 0, 7, 1.6);
+      lamp.position.set(0, 1.4, 0);
+      g.add(lamp);
+      g.userData.lamp = lamp;
+      this.scene.add(g);
+      this.sailing.push({ g, speed, z, x0 });
+    }
+  }
+
+  /** The harbour vignette: open sea, the lighthouse and the moon, ships sailing past. */
+  setHarbour(on: boolean): void {
+    this.harbour = on;
+    this.frames.visible = !on;
+    this.fog.visible = !on;
+    for (const s of this.sailing) { s.g.visible = on; (s.g.userData.lamp as THREE.PointLight).intensity = on ? 7 : 0; }
+    this.renderer.toneMappingExposure = on ? 1.3 : 1.15;
+    (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? 0.03 : 0.05;
+    this.resize();
   }
 
   private buildIsland(): void {
@@ -626,7 +658,11 @@ export class Sea {
     const narrow = this.camera.aspect < 1.25;
     this.camera.fov = narrow ? 50 : 40;
     this.camera.updateProjectionMatrix();
-    if (!narrow || this.focus === 'both') {
+    if (this.harbour) {
+      // from the near water, across the open sea to the lighthouse with the moon above it
+      this.camGoal.pos.set(9, narrow ? 5.4 : 4.6, 16);
+      this.camGoal.look.set(-4, narrow ? 3.2 : 2.6, -20);
+    } else if (!narrow || this.focus === 'both') {
       // fit both boards: back off as the screen gets narrower, and further until both waters with their
       // row letters and column numbers sit between the side panels (the chart on the left, fleets on the
       // right: about 290px each on a wide screen) instead of under them
@@ -694,11 +730,12 @@ export class Sea {
     const col = new THREE.Color();
     for (let i = 0; i < this.oceanBase.length; i++) {
       const o = this.oceanBase[i];
-      const amp = o.board >= 0 ? 0.035 : 0.12;
+      const onBoard = o.board >= 0 && !this.harbour;
+      const amp = onBoard ? 0.035 : 0.12;
       const y = Math.sin(o.x * 0.55 + t * 1.3) * amp + Math.cos(o.z * 0.7 + t * 0.9) * amp * 0.8 - 0.5;
       this.m4.makeTranslation(o.x, y, o.z);
       this.ocean.setMatrixAt(i, this.m4);
-      if (o.board >= 0) {
+      if (onBoard) {
         const tint = this.tileTint.get(`${o.board}:${o.cell}`);
         const hov = this.hovered && this.hovered.board === o.board && this.hovered.cell === o.cell && this.hoverBox.visible;
         col.setHex(tint ?? (((rowOf(o.cell) + colOf(o.cell)) % 2) ? C.board : C.boardHi));
@@ -708,7 +745,7 @@ export class Sea {
         const glint = this.moonPath[i] * (0.55 + 0.45 * Math.sin(o.x * 1.7 + o.z * 2.3 + t * 2.6));
         col.setHex(C.sea).lerp(new THREE.Color(0xbfd2ff), glint * 0.5);
         this.ocean.setColorAt(i, col);
-      } else if (i % 7 === 0) {
+      } else if (i % 7 === 0 || o.board >= 0) {
         col.setHex(C.sea).lerp(new THREE.Color(C.seaHi), 0.5 + 0.5 * Math.sin(o.x * 0.3 + o.z * 0.2 + t * 0.8));
         this.ocean.setColorAt(i, col);
       }
@@ -764,6 +801,14 @@ export class Sea {
 
     this.particles.splashGravity(dt);
     this.particles.update(dt);
+    if (this.harbour) {
+      for (const s of this.sailing) {
+        const x = ((s.x0 + t * s.speed + 30) % 60 + 60) % 60 - 30;
+        s.g.position.set(x, 0.05 + Math.sin(t * 1.3 + s.z) * 0.06, s.z);
+        s.g.rotation.x = Math.sin(t * 1.1 + s.z) * 0.04;
+      }
+      this.camGoal.pos.x = 9 + Math.sin(t * 0.07) * 1.6;
+    }
     this.beam.rotation.y = t * 0.6;
     this.reticle.rotation.y = t * 1.2;
     this.reticle.scale.setScalar(1 + Math.sin(t * 6) * 0.06);
