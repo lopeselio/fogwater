@@ -481,7 +481,11 @@ export function Game({ id, sea, cfg, account, go, tour, endTour }: Props) {
       {d.phase === 'done' && (
         <div className="card center result">
           <h2 className={d.winner === me && seated ? 'win' : 'lose'}>{seated ? (d.winner === me ? 'VICTORY' : 'DEFEAT') : `${view.seats[d.winner ?? 0]?.name} WINS`}</h2>
-          <p>{d.reason}. {d.shots[d.winner ?? 0].length} shots, {Math.round((100 * hits[d.winner ?? 0]) / Math.max(1, d.shots[d.winner ?? 0].length))}% on target.</p>
+          <p>{d.reason}.</p>
+          {/* both sides' gunnery, each under its own name, so the loser's panel doesn't read the winner's numbers as theirs */}
+          <p className="small gunnery">{(seated ? [me, them] : [0, 1] as Seat[]).map((k) => (
+            <span key={k}><b>{seated && k === me ? 'You' : view.seats[k]?.name ?? `Seat ${k + 1}`}</b>{k === d.winner ? ' (won)' : ''}: {d.shots[k].length} shots, {Math.round((100 * hits[k]) / Math.max(1, d.shots[k].length))}% on target, {hits[k]}/17 hits</span>
+          ))}</p>
           {view.chain.enabled
             ? <p className="dim small">The contract checked every answer against the sealed fleets{d.revealed[0] && d.revealed[1] ? ', then rebuilt both seas from their seeds and found them legal' : ''}. Check it yourself (in a clone of the repo): <code>pnpm verify {id} {location.origin}</code></p>
             : <p className="dim small">Offline mode: the server checked every answer against the sealed fleets; nothing was written onchain.</p>}
