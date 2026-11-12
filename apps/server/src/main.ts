@@ -89,7 +89,8 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         relayer: hasKey(config.relayer) ? config.relayer : null, nearAi: nearAiEnabled(), admirals: ADMIRALS,
       });
     }
-    if (p === '/api/me') return me ? json(res, 200, { accountId: me, stats: config.chainEnabled ? await view('stats_of', { account_id: me }).catch(() => null) : null }) : json(res, 401, { error: 'not signed in' });
+    // a guest is a normal state, not an error: 200 null keeps every guest page load free of a red 401 in the console
+    if (p === '/api/me') return json(res, 200, me ? { accountId: me, stats: config.chainEnabled ? await view('stats_of', { account_id: me }).catch(() => null) : null } : null);
     if (p === '/api/leaderboard') return json(res, 200, config.chainEnabled ? await view('leaderboard', { limit: 20 }).catch(() => []) : []);
     if (p === '/api/attestation') return json(res, 200, await attestation());
     if (p === '/api/recent') {
