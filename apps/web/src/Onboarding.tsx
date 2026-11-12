@@ -123,13 +123,15 @@ interface Step {
 
 /** How this screen is used: a finger or a mouse, and whether the two waters sit side by side or behind tabs
  *  (the same breakpoint as `.narrow-tabs` in style.css). The tour's words and placement follow it. */
-interface Device { touch: boolean; tabs: boolean; sheets: boolean }
+interface Device { touch: boolean; tabs: boolean; sheets: boolean; short: boolean }
 const mq = (q: string): boolean => typeof matchMedia === 'function' && matchMedia(q).matches;
 const device = (): Device => ({
   touch: mq('(pointer: coarse)'),
   tabs: mq('(max-aspect-ratio: 5/4)'),
-  // the side panel becomes the Info sheet (style.css, max-width: 600px)
-  sheets: mq('(max-width: 600px)'),
+  // the side panel becomes the Info sheet (style.css: max-width 600px, or a phone held sideways)
+  sheets: mq('(max-width: 600px), (max-height: 500px) and (min-aspect-ratio: 5/4)'),
+  // a phone held sideways: no room under the waters, so the card sits over the other water
+  short: mq('(max-height: 500px) and (min-aspect-ratio: 5/4)'),
 });
 
 const steps = ({ touch, tabs, sheets }: Device): Step[] => [
@@ -179,6 +181,8 @@ export function Coach({ state, onDone }: { state: CoachState; onDone: () => void
     const bar = [...document.querySelectorAll('.dock, .phonebar')].map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0);
     const top = bar.length ? Math.min(...bar.map((r) => r.top)) : window.innerHeight;
     style = { left: '50%', bottom: window.innerHeight - top + 8, transform: 'translateX(-50%)' };
+  } else if (dev.short && (step.at === 'mine' || step.at === 'enemy')) {
+    style = step.at === 'mine' ? { right: 12, bottom: 64 } : { left: 12, bottom: 64 };
   } else if (step.at === 'mine') style = { left: '4%', bottom: '18%' };
   else if (step.at === 'enemy') style = { right: '4%', bottom: '18%' };
   else style = { left: '50%', bottom: '14%', transform: 'translateX(-50%)' };

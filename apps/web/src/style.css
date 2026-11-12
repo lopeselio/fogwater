@@ -242,3 +242,25 @@ button:not(:disabled):active { transform: translateY(1px); }
 }
 
 .result .gunnery { display: flex; flex-direction: column; gap: 2px; }
+
+/* phones held sideways (short and wide): the chart and the fleets panel become the same Chart / Info sheets as in
+   portrait, instead of a chart over the logo and a fleets strip over the waters */
+@media (max-height: 500px) and (min-aspect-ratio: 5/4) {
+  /* the header keeps just "?" and the status sits between the logo and the header buttons */
+  .top button.ghost.small[title^="How"] { font-size: 0; }
+  .top button.ghost.small[title^="How"]::before { content: '?'; font-size: 13px; }
+  .status { top: 8px; left: 178px; right: 250px; transform: none; width: auto; padding: 6px 12px; }
+  .status p { font-size: 13px; line-height: 1.3; }
+  .status small.dim, .status .stats { display: none; }
+  .side, .chartbox { display: none; }
+  .side.open, .chartbox.open {
+    display: block; position: fixed; top: 56px; left: auto; right: 10px; bottom: 60px; width: min(420px, 60vw); max-height: none; overflow: auto; z-index: 6;
+  }
+  .chartbox.open figure:last-child, .chartbox.open .log { display: block; }
+  .chartbox.open .charts { grid-template-columns: 1fr 1fr; }
+  .phonebar { display: flex; gap: 8px; position: fixed; right: 10px; bottom: 10px; z-index: 6; pointer-events: auto; }
+  .phonebar button { padding: 9px 14px; background: rgba(9, 17, 34, .9); color: var(--ink); border: 1px solid var(--line); }
+  .phonebar button.on { background: var(--gold); color: #1a1205; }
+  .dock { bottom: 8px; padding: 6px 8px; }
+  .dock small { display: none; }
+}
