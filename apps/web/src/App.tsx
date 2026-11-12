@@ -94,7 +94,8 @@ function Harbour({ sea, cfg, account, go }: { sea: Sea; cfg: ServerConfig | null
   const [list, setList] = useState<Summary[]>([]);
   const [board, setBoard] = useState<[string, Stats][]>([]);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
+  // the error shows next to the control that started the game: the hero button, the admirals or the challenge link
+  const [err, setErr] = useState<{ at: 'hero' | 'admirals' | 'friend'; msg: string } | null>(null);
 
   useEffect(() => {
     sea.clearMarks(); sea.setFleet(0, []); sea.setFleet(1, []); sea.resetFog(); sea.setFocus('both'); sea.events = {};
@@ -108,15 +109,15 @@ function Harbour({ sea, cfg, account, go }: { sea: Sea; cfg: ServerConfig | null
     void api<[string, Stats][]>('/leaderboard').then(setBoard).catch(() => undefined);
   }, [account]);
 
-  const start = async (mode: 'ai' | 'friend', admiral?: string): Promise<void> => {
-    setBusy(true); setErr('');
+  const start = async (mode: 'ai' | 'friend', admiral?: string, at: 'hero' | 'admirals' | 'friend' = mode === 'friend' ? 'friend' : 'admirals'): Promise<void> => {
+    setBusy(true); setErr(null);
     try {
       const nm = name.trim() || 'Captain';
       setName(nm);
       const r = await api<{ id: string; seat: 0 | 1; token: string }>('/games', { mode, admiral, name: nm });
       putSeat(r.id, { seat: r.seat, token: r.token, name: nm });
       go(r.id);
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { setErr({ at, msg: (e as Error).message }); } finally { setBusy(false); }
   };
 
   const first = cfg?.admirals[0];
@@ -136,10 +137,10 @@ function Harbour({ sea, cfg, account, go }: { sea: Sea; cfg: ServerConfig | null
           <p className="tagline">A sea battle by lantern light, <b>sealed onchain</b>.</p>
           <p className="hero-sub">Every hit or miss is proven by a NEAR contract. Nobody sees your ships, not your rival, not the AI, not our server, until the last one sinks.</p>
           <div className="hero-cta">
-            <button className="primary" disabled={busy || !first} onClick={() => first && void start('ai', first.id)}>{busy ? 'Setting sail…' : 'Set sail'}</button>
+            <button className="primary" disabled={busy || !first} onClick={() => first && void start('ai', first.id, 'hero')}>{busy ? 'Setting sail…' : 'Set sail'}</button>
             <a className="hero-more" href="#admirals" onClick={(e) => { e.preventDefault(); document.getElementById('admirals')?.scrollIntoView({ behavior: 'smooth' }); }}>{first ? `vs ${first.name} · or pick your admiral ↓` : 'Pick your admiral ↓'}</a>
           </div>
-          {err && <p className="err">{err}</p>}
+          {err?.at === 'hero' && <p className="err" role="alert">{err.msg}</p>}
         </div>
       </section>
 
@@ -156,12 +157,14 @@ function Harbour({ sea, cfg, account, go }: { sea: Sea; cfg: ServerConfig | null
             </button>
           ))}
         </div>
+        {err?.at === 'admirals' && <p className="err" role="alert">Couldn’t start the battle: {err.msg}</p>}
       </section>
 
       <section className="panel">
         <h2>Challenge a friend</h2>
         <p className="dim">Get a link, send it in any chat. Take your shots whenever you like: the game waits (3 days per move), and plays live when you’re both here.</p>
         <button disabled={busy} onClick={() => void start('friend')}>Create a challenge link</button>
+        {err?.at === 'friend' && <p className="err" role="alert">Couldn’t create the link: {err.msg}</p>}
       </section>
 
       {list.length > 0 && (
