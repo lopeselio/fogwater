@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type ServerConfig, type Stats, type Summary } from './api.ts';
 import { Game } from './Game.tsx';
 import { allSeats, getName, putSeat, setName } from './local.ts';
+import { Portrait } from './Art.tsx';
 import { HowToPlay, Welcome, readSeen, writeSeen } from './Onboarding.tsx';
 import { Sea, isMuted, setMuted } from './scene.ts';
 import { setContract, signIn, signOut } from './wallet.ts';
@@ -98,7 +99,9 @@ function Harbour({ sea, cfg, account, go }: { sea: Sea; cfg: ServerConfig | null
   useEffect(() => {
     sea.clearMarks(); sea.setFleet(0, []); sea.setFleet(1, []); sea.resetFog(); sea.setFocus('both'); sea.events = {};
     sea.setHover(0, null);
+    sea.setHarbour(true);
     document.title = 'Fogwater';
+    return () => sea.setHarbour(false);
   }, [sea]);
   useEffect(() => {
     void api<Summary[]>('/harbour', { seats: allSeats() }).then(setList).catch(() => undefined);
@@ -116,6 +119,8 @@ function Harbour({ sea, cfg, account, go }: { sea: Sea; cfg: ServerConfig | null
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
+  const first = cfg?.admirals[0];
+
   const status = (s: Summary): string => {
     if (s.phase === 'done') return s.winner === s.you ? 'Victory' : 'Defeat';
     if (s.names[1] === null) return 'Waiting for your friend';
@@ -126,18 +131,28 @@ function Harbour({ sea, cfg, account, go }: { sea: Sea; cfg: ServerConfig | null
   return (
     <main className="harbour">
       <section className="hero">
-        <h1>FOGWATER</h1>
-        <p>A sea battle by lantern light. Your fleet is <b>sealed onchain</b> before the first shot, and every “hit” or “miss” is proven against that seal by a NEAR contract. Nobody sees your ships, not your rival, not the AI, not our server, until the last one sinks.</p>
-        <label className="name">Captain’s name <input value={name} maxLength={24} placeholder="Captain" onChange={(e) => setNameState(e.target.value)} /></label>
-        {err && <p className="err">{err}</p>}
+        <div className="hero-copy">
+          <h1>FOGWATER</h1>
+          <p className="tagline">A sea battle by lantern light, <b>sealed onchain</b>.</p>
+          <p className="hero-sub">Every hit or miss is proven by a NEAR contract. Nobody sees your ships, not your rival, not the AI, not our server, until the last one sinks.</p>
+          <div className="hero-cta">
+            <button className="primary" disabled={busy || !first} onClick={() => first && void start('ai', first.id)}>{busy ? 'Setting sail…' : 'Set sail'}</button>
+            <a className="hero-more" href="#admirals" onClick={(e) => { e.preventDefault(); document.getElementById('admirals')?.scrollIntoView({ behavior: 'smooth' }); }}>{first ? `vs ${first.name} · or pick your admiral ↓` : 'Pick your admiral ↓'}</a>
+          </div>
+          {err && <p className="err">{err}</p>}
+        </div>
       </section>
 
-      <section className="panel">
+      <section className="panel" id="admirals">
         <h2>Battle an admiral</h2>
+        <label className="name">Captain’s name <input value={name} maxLength={24} placeholder="Captain" onChange={(e) => setNameState(e.target.value)} /></label>
         <div className="admirals">
           {(cfg?.admirals ?? []).map((a) => (
             <button key={a.id} className={`admiral ${a.skill}`} disabled={busy} onClick={() => void start('ai', a.id)}>
-              <b>{a.name}</b><small>{a.title} · {a.skill}</small><span>{a.blurb}</span>
+              <Portrait id={a.id} size={68} />
+              <span className="admiral-text">
+                <b>{a.name}</b><small>{a.title} · <i className="skill">{a.skill}</i></small><span>{a.blurb}</span>
+              </span>
             </button>
           ))}
         </div>
