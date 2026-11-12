@@ -392,11 +392,6 @@ export class Sea {
       const g = buildShip(k);
       g.visible = false;
       if (speed < 0) g.rotation.y = Math.PI;
-      // each ship carries its own lantern light (dark until the harbour shows them)
-      const lamp = new THREE.PointLight(0xffb45a, 0, 7, 1.6);
-      lamp.position.set(0, 1.4, 0);
-      g.add(lamp);
-      g.userData.lamp = lamp;
       this.scene.add(g);
       this.sailing.push({ g, speed, z, x0 });
     }
@@ -407,7 +402,7 @@ export class Sea {
     this.harbour = on;
     this.frames.visible = !on;
     this.fog.visible = !on;
-    for (const s of this.sailing) { s.g.visible = on; (s.g.userData.lamp as THREE.PointLight).intensity = on ? 7 : 0; }
+    for (const s of this.sailing) s.g.visible = on;
     this.renderer.toneMappingExposure = on ? 1.3 : 1.15;
     (this.beam.material as THREE.MeshBasicMaterial).opacity = on ? 0.03 : 0.05;
     this.resize();
@@ -832,6 +827,8 @@ export class Sea {
     this.camera.lookAt(this.camLook.x + (Math.random() - 0.5) * sh, this.camLook.y + (Math.random() - 0.5) * sh, this.camLook.z);
     const burning = this.fires.slice(-this.fireLights.length);
     this.fireLights.forEach((l, i) => {
+      const ship = this.harbour ? this.sailing[i] : undefined;
+      if (ship) { l.position.copy(ship.g.position).setY(1.4); l.intensity = 6; return; }
       const f = burning[i];
       if (!f) { l.intensity = 0; return; }
       l.position.copy(cellPos(f.board, f.cell)).setY(0.9);
