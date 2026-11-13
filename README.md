@@ -87,6 +87,65 @@ contracts/fleet   Rust near-sdk 5.29: games, seals, answers checked against root
 - Guest seats are labels the server speaks for; only signed-in captains seal from their own key.
 - Your fleet secret lives in this browser's storage. Open a game on another device and it can't answer shots there.
 
+## Built on NEAR
+
+What each NEAR technology does in Fogwater, and where to look. Each GIF is a short loop (12 seconds or less).
+
+| Technology | What Fogwater uses it for | Where to look |
+|---|---|---|
+| NEAR smart contract (Rust, near-sdk 5.29.1) | games, sealed fleet roots, every shot and answer checked against its root, reveals, timeouts, the Admirals' ledger | [`contracts/fleet`](contracts/fleet/src/lib.rs), [`fogwater.testnet`](https://testnet.nearblocks.io/address/fogwater.testnet) |
+| NEAR RPC (public testnet endpoints) | `pnpm verify` reads the game from the contract with no keys and re-checks the server's proof bundle against it | [`apps/server/src/verify.ts`](apps/server/src/verify.ts) |
+| NEAR AI Cloud | the admirals' spoken lines from a TEE-hosted model, each kept with the enclave's signature; `/api/attestation` serves the TEE report | [`apps/server/src/nearai.ts`](apps/server/src/nearai.ts), [`apps/server/src/games.ts`](apps/server/src/games.ts) |
+| NEP-413 sign-in, NEP-366 meta-transactions | wallet sign-in (Better Auth + better-near-auth, NEAR Connect); signed-in captains seal their fleet from their own account, gas paid by `fogwater-relay.testnet` | [`apps/web/src/wallet.ts`](apps/web/src/wallet.ts), [`apps/server/src/ba.ts`](apps/server/src/ba.ts) |
+
+### NEAR smart contract: sealed fleets, proven answers
+
+<img src="media/stack/contract.gif" alt="Diagram: your browser sends only a Merkle root to commit_fleet on fogwater.testnet; the referee relays shots and answers in play batches and the contract checks each opening against the root; after 17 hits reveal_fleet rebuilds the tree and an illegal fleet loses." width="100%">
+
+One Rust contract, [`fogwater.testnet`](https://testnet.nearblocks.io/address/fogwater.testnet), holds the battle.
+`commit_fleet` stores only a 32-byte Merkle root of your salted sea; each `Answer` in a `play` call opens one cell with
+7 sibling hashes, and `verify_opening` refuses any answer that doesn't hash to that root
+([`lib.rs`](contracts/fleet/src/lib.rs), same bytes as [`commit.ts`](packages/rules/src/commit.ts)). After 17 hits
+`reveal_fleet` rebuilds the whole tree from the seed: an illegal fleet, a moved ship or a false "sunk" loses, and anyone
+may call `claim_timeout` on a seat that stops answering.
+
+### NEAR RPC: check a battle yourself
+
+<img src="media/stack/verify.gif" alt="Diagram: pnpm verify fetches the proof bundle from the game server and the game record from fogwater.testnet over public RPC, re-checks every opening against the sealed roots, replays the turns and checks both revealed fleets; then the real output for hosted game 066a93d24a39." width="100%">
+
+[`verify.ts`](apps/server/src/verify.ts) downloads the game's proof bundle and reads `get_game` from the contract through
+public testnet RPCs (drpc, intea, fastnear), with no keys. It opens every answer against the sealed roots, replays the
+turns with `packages/rules`, checks both revealed fleets and compares everything with the contract's record. The last
+beat is the real output for hosted game `066a93d24a39` (step 5 above).
+
+### NEAR AI Cloud: admirals that talk, not aim
+
+<img src="media/stack/near-ai.gif" alt="Diagram: the admiral's planner in admiral.ts picks every shot; NEAR AI Cloud's TEE-hosted Qwen model only writes a short line at the start, after a sinking and at the end, each kept with its request, response and the enclave's signature; the server can fetch the model's attestation report bound to a fresh nonce." width="100%">
+
+The admirals aim with [`admiral.ts`](packages/rules/src/admiral.ts), seeded and from their own hits and misses only. Their
+lines come from `Qwen/Qwen3.6-35B-A3B-FP8` on NEAR AI Cloud ([`nearai.ts`](apps/server/src/nearai.ts)): each reply is
+stored in the proof bundle with its exact request, response and the enclave's ECDSA signature, and shows
+"✓ signed by NEAR AI TEE" in game. `/api/attestation` returns the model's TEE report bound to a fresh 32-byte nonce.
+
+### NEP-413 sign-in and NEP-366: your seal, from your wallet
+
+<img src="media/stack/wallet.gif" alt="Diagram: your NEAR wallet signs a NEP-413 message checked by better-near-auth; a signed delegate action for commit_fleet goes through fogwater-relay.testnet, which pays the gas, to fogwater.testnet; wins land on the Admirals' ledger." width="100%">
+
+Sign-in is Better Auth with better-near-auth ([`ba.ts`](apps/server/src/ba.ts)): the wallet signs "Sign in to &lt;host&gt;"
+and the server checks it against a full-access key. A signed-in captain's `commit_fleet` is a NEP-366 delegate action
+signed in their wallet ([`wallet.ts`](apps/web/src/wallet.ts)) and relayed by `fogwater-relay.testnet`, which only relays
+to Fogwater and never attaches a deposit; the contract requires that seal to come from the seat's own account. Their
+results go to `stats_of` and `leaderboard`.
+
+### The rest of the stack
+
+<img src="media/stack/stack.gif" alt="Diagram: apps/web (three.js voxel sea, React 19 and Vite 8) talks to apps/server (Node 22) over /api, which writes to NEAR testnet; packages/rules is shared by browser and server; one image runs on Azure Container Apps with Azure Files at /data." width="100%">
+
+The web app is a three.js voxel scene with a React HUD ([`apps/web`](apps/web/src)); the Node server
+([`apps/server`](apps/server/src)) runs games and admirals and batches moves into `play` calls with near-api-js and
+near-kit. [`packages/rules`](packages/rules/src) runs in both and is pinned to the contract by a shared hash test vector.
+One container on Azure Container Apps ([`deploy-azure.sh`](scripts/deploy-azure.sh)) serves both, with an Azure Files share at `/data`.
+
 ## Tests
 
 ```bash
