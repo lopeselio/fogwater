@@ -29,6 +29,14 @@ code { font: 12px ui-monospace, monospace; background: rgba(255, 255, 255, .06);
 .logo { font: 700 20px Silkscreen, monospace; letter-spacing: 2px; color: #fff; text-decoration: none; text-shadow: 0 0 14px rgba(255, 207, 90, .55), 3px 3px 0 #1d3b63; }
 .acct { display: flex; gap: 8px; align-items: center; font-size: 12px; }
 .acct a { color: var(--mint); }
+.acct { position: relative; }
+.signin-fail { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; width: min(320px, 86vw); display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; background: #1b1424; border: 1px solid #ff9b8a; box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 13px; line-height: 1.4; text-align: left; animation: signin-in .18s ease-out; }
+.signin-fail b { color: #ff9b8a; }
+.signin-fail-row { display: flex; gap: 8px; margin-top: 2px; }
+.signin-fail details { font-size: 11px; opacity: .7; }
+.signin-fail code { word-break: break-word; }
+@keyframes signin-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .signin-fail { animation: none; } }
 
 /* harbour */
 .harbour { position: fixed; inset: 0; overflow-y: auto; padding: 0 16px 40px; z-index: 2; -webkit-overflow-scrolling: touch; }
